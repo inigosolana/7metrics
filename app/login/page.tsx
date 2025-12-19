@@ -10,36 +10,27 @@ import { Activity, Shield, User, Users } from "lucide-react"
 const mockUsers = [
   {
     id: "superadmin1",
-    name: "Admin Principal",
+    name: "Administrador Global",
     role: "superadmin" as UserRole,
-    description: "Acceso total a todos los clubes y equipos",
+    description: "Control total del sistema y gestión de accesos para entrenadores.",
     icon: Shield,
   },
   {
     id: "coach1",
-    name: "Entrenador Madrid - Senior A",
+    name: "Entrenador Senior A",
     role: "coach" as UserRole,
     clubId: "club1",
-    assignedTeamIds: ["1"], // Solo puede editar el equipo Senior A
-    description: "Entrenador del Senior A. Puede editar SOLO ese equipo",
-    icon: Users,
-  },
-  {
-    id: "coach2",
-    name: "Entrenador Madrid - Todos",
-    role: "coach" as UserRole,
-    clubId: "club1",
-    assignedTeamIds: ["1", "2"], // Puede editar Senior A y Juvenil B
-    description: "Entrenador con acceso a Senior A y Juvenil B",
+    assignedTeamIds: ["1"],
+    description: "Acceso completo para editar su equipo asignado. Modo lectura en el resto.",
     icon: Users,
   },
   {
     id: "player1",
-    name: "Pablo García",
+    name: "Jugador de Plantilla",
     role: "player" as UserRole,
     clubId: "club1",
     teamId: "1",
-    description: "Jugador del equipo Senior A (Solo lectura)",
+    description: "Visualización de estadísticas personales y del equipo. Sin permisos de edición.",
     icon: User,
   },
 ]
@@ -82,7 +73,7 @@ export default function LoginPage() {
         </div>
 
         {/* Cards de roles */}
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-6 md:grid-cols-3">
           {mockUsers.map((user) => (
             <Card
               key={user.id}

@@ -19,19 +19,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts"
-import {
-  Activity,
-  Users,
-  Target,
-  TrendingUp,
-  ArrowLeft,
-  Plus,
-  Pencil,
-  Trash2,
-  Eye,
-  UserCircle,
-  Lock,
-} from "lucide-react"
+import { Activity, Users, Target, TrendingUp, ArrowLeft, Plus, Pencil, UserCircle, Lock } from "lucide-react"
 
 const positions = [
   "Portero",
@@ -383,58 +371,100 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
                 <Table>
                   <TableHeader>
                     <TableRow className="border-border hover:bg-transparent">
-                      <TableHead className="text-muted-foreground">Dorsal</TableHead>
-                      <TableHead className="text-muted-foreground">Nombre</TableHead>
-                      <TableHead className="text-muted-foreground">Posición</TableHead>
-                      <TableHead className="text-right text-muted-foreground">Acciones</TableHead>
+                      <TableHead className="w-[80px]">Dorsal</TableHead>
+                      <TableHead>Jugador</TableHead>
+                      <TableHead className="text-center">PJ</TableHead>
+                      <TableHead className="text-center">Goles (G)</TableHead>
+                      <TableHead className="text-center">Fallos (FS)</TableHead>
+                      <TableHead className="text-center">Pérdidas (PO)</TableHead>
+                      <TableHead className="text-right">Eficiencia %</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {teamPlayers.map((player) => (
-                      <TableRow key={player.id} className="border-border">
-                        <TableCell className="font-bold text-primary">{player.number}</TableCell>
-                        <TableCell className="text-card-foreground">{player.name}</TableCell>
-                        <TableCell className="text-card-foreground">{player.position}</TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex justify-end gap-2">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => handleViewProfile(player.id)}
-                              className="text-secondary hover:bg-secondary/10"
-                              title="Ver perfil"
+                    {teamPlayers.map((player) => {
+                      const stats = getPlayerStats(player.id)
+                      const efficiency = stats.accuracy
+                      return (
+                        <TableRow key={player.id} className="border-border hover:bg-muted/10 transition-colors">
+                          <TableCell className="font-bold text-primary">#{player.number}</TableCell>
+                          <TableCell className="font-medium text-card-foreground">{player.name}</TableCell>
+                          <TableCell className="text-center">{stats.totalMatches}</TableCell>
+                          <TableCell className="text-center font-bold">{stats.totalGoals}</TableCell>
+                          <TableCell className="text-center text-muted-foreground">{stats.totalMisses}</TableCell>
+                          <TableCell className="text-center text-muted-foreground">{stats.totalTurnovers}</TableCell>
+                          <TableCell className="text-right">
+                            <span
+                              className={`px-2 py-1 rounded-full text-xs font-bold ${
+                                efficiency >= 70
+                                  ? "bg-green-500/20 text-green-400"
+                                  : efficiency >= 50
+                                    ? "bg-yellow-500/20 text-yellow-400"
+                                    : "bg-red-500/20 text-red-400"
+                              }`}
                             >
-                              <Eye className="h-4 w-4" />
-                            </Button>
-                            {canEdit && (
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => handleEditPlayer(player.id)}
-                                className="text-secondary hover:bg-secondary/10"
-                                title="Editar"
-                              >
-                                <Pencil className="h-4 w-4" />
-                              </Button>
-                            )}
-                            {canDelete && (
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => handleDeletePlayer(player.id)}
-                                className="text-destructive hover:bg-destructive/10"
-                                title="Eliminar"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            )}
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                              {efficiency.toFixed(1)}%
+                            </span>
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })}
                   </TableBody>
                 </Table>
               )}
+            </CardContent>
+          </Card>
+
+          {/* Tabla de Eficiencia de Plantilla */}
+          <Card className="bg-card border-border overflow-hidden">
+            <CardHeader className="bg-muted/30">
+              <CardTitle className="text-card-foreground">Tabla de Eficiencia de Plantilla</CardTitle>
+              <CardDescription className="text-muted-foreground">
+                Rendimiento detallado por jugador en la temporada
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader className="bg-muted/20">
+                  <TableRow className="border-border hover:bg-transparent">
+                    <TableHead className="w-[80px]">Dorsal</TableHead>
+                    <TableHead>Jugador</TableHead>
+                    <TableHead className="text-center">PJ</TableHead>
+                    <TableHead className="text-center">Goles (G)</TableHead>
+                    <TableHead className="text-center">Fallos (FS)</TableHead>
+                    <TableHead className="text-center">Pérdidas (PO)</TableHead>
+                    <TableHead className="text-right">Eficiencia %</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {teamPlayers.map((player) => {
+                    const stats = getPlayerStats(player.id)
+                    const efficiency = stats.accuracy
+                    return (
+                      <TableRow key={player.id} className="border-border hover:bg-muted/10 transition-colors">
+                        <TableCell className="font-bold text-primary">#{player.number}</TableCell>
+                        <TableCell className="font-medium text-card-foreground">{player.name}</TableCell>
+                        <TableCell className="text-center">{stats.totalMatches}</TableCell>
+                        <TableCell className="text-center font-bold">{stats.totalGoals}</TableCell>
+                        <TableCell className="text-center text-muted-foreground">{stats.totalMisses}</TableCell>
+                        <TableCell className="text-center text-muted-foreground">{stats.totalTurnovers}</TableCell>
+                        <TableCell className="text-right">
+                          <span
+                            className={`px-2 py-1 rounded-full text-xs font-bold ${
+                              efficiency >= 70
+                                ? "bg-green-500/20 text-green-400"
+                                : efficiency >= 50
+                                  ? "bg-yellow-500/20 text-yellow-400"
+                                  : "bg-red-500/20 text-red-400"
+                            }`}
+                          >
+                            {efficiency.toFixed(1)}%
+                          </span>
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })}
+                </TableBody>
+              </Table>
             </CardContent>
           </Card>
         </TabsContent>
@@ -639,6 +669,34 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
                     </CardContent>
                   </Card>
                 </div>
+              </div>
+
+              {/* Heatmap de campo visual para perfil de jugador */}
+              <div className="space-y-4">
+                <h4 className="text-lg font-semibold text-card-foreground">Mapa de Calor de Lanzamientos</h4>
+                <div className="relative aspect-[40/20] bg-emerald-900/20 border-2 border-white/20 rounded-lg overflow-hidden group">
+                  {/* Líneas del campo simplificadas */}
+                  <div className="absolute inset-y-0 left-0 w-[15%] border-r border-white/40 rounded-r-full" />
+                  <div className="absolute inset-y-0 right-0 w-[15%] border-l border-white/40 rounded-l-full" />
+                  <div className="absolute inset-y-[25%] left-0 w-[6%] border-2 border-white/60 bg-primary/20" />
+                  <div className="absolute inset-y-[25%] right-0 w-[6%] border-2 border-white/60 bg-secondary/20" />
+                  <div className="absolute inset-y-0 left-1/2 w-px bg-white/40" />
+                  <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-16 h-16 border border-white/40 rounded-full" />
+
+                  {/* Puntos de calor (Shots) */}
+                  {playerStats.shotZones.map((shot, idx) => (
+                    <div
+                      key={idx}
+                      className={`absolute w-3 h-3 rounded-full blur-[2px] transform -translate-x-1/2 -translate-y-1/2 ${
+                        shot.result === "goal" ? "bg-primary shadow-[0_0_8px_var(--primary)]" : "bg-white/40"
+                      }`}
+                      style={{ left: `${shot.x}%`, top: `${shot.y}%` }}
+                    />
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground text-center">
+                  Visualización de zonas de tiro activa basada en datos de partidos
+                </p>
               </div>
 
               {canEdit && (
