@@ -1,12 +1,12 @@
 import type React from "react"
 import type { Metadata } from "next"
-import { Geist, Geist_Mono } from "next/font/google"
-import { Analytics } from "@vercel/analytics/next"
+import { Inter } from "next/font/google"
+import { Analytics } from "@vercel/analytics/react"
 import "./globals.css"
 import { ClubProvider } from "@/contexts/club-context"
 
-const _geist = Geist({ subsets: ["latin"] })
-const _geistMono = Geist_Mono({ subsets: ["latin"] })
+const inter = Inter({ subsets: ["latin"], variable: "--font-sans" })
+// const _geistMono = Geist_Mono({ subsets: ["latin"] }) // Removed unused mono font
 
 export const metadata: Metadata = {
   title: "Handball.AI - Gestión Profesional de Balonmano",
@@ -38,7 +38,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="es" className="dark">
-      <body className={`font-sans antialiased`}>
+      <body className={`${inter.variable} font-sans antialiased bg-background text-foreground`}>
         <ClubProvider>{children}</ClubProvider>
         <Analytics />
       </body>
