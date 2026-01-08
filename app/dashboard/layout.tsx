@@ -26,9 +26,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }
 
   const navigation = [
-    { name: "Mis Equipos", href: "/dashboard", icon: LayoutDashboard, roles: ["superadmin", "coach", "player"] },
-    { name: "Sala de Análisis", href: "/dashboard/analysis", icon: Activity, roles: ["superadmin", "coach"] },
-    { name: "Video Studio (AI)", href: "/dashboard/coach/video", icon: PlayCircle, roles: ["superadmin", "coach"] },
+    { name: "Mis Equipos", href: "/dashboard", icon: LayoutDashboard, roles: ["superadmin", "club_admin", "coach", "player"] },
+    { name: "Sala de Análisis", href: "/dashboard/analysis", icon: Activity, roles: ["superadmin", "club_admin", "coach"] },
+    { name: "Video Studio (AI)", href: "/dashboard/coach/video", icon: PlayCircle, roles: ["superadmin", "club_admin", "coach"] },
+    { name: "Plantilla Técnica", href: "/dashboard/admin/staff", icon: Users, roles: ["superadmin", "club_admin"] },
     { name: "Gestión de Clubes", href: "/dashboard/clubs", icon: Shield, roles: ["superadmin"] },
     { name: "Gestión de Accesos", href: "/dashboard/access", icon: Shield, roles: ["superadmin"] },
   ].filter((item) => item.roles.includes(currentUser.role))
@@ -85,9 +86,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <span className="text-xs font-bold text-primary mt-0.5 capitalize">
               {currentUser.role === "superadmin"
                 ? "Administrador Global"
-                : currentUser.role === "coach"
-                  ? "Entrenador"
-                  : "Jugador"}
+                : currentUser.role === "club_admin"
+                  ? "Administrador Club"
+                  : currentUser.role === "coach"
+                    ? "Entrenador"
+                    : "Jugador"}
             </span>
           </div>
         </div>

@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useState, type ReactNode } from "react"
 
-export type UserRole = "superadmin" | "coach" | "player"
+export type UserRole = "superadmin" | "club_admin" | "coach" | "player"
 
 export interface User {
   id: string
@@ -473,7 +473,7 @@ export function ClubProvider({ children }: { children: ReactNode }) {
   const canEditTeam = (teamId: string) => {
     if (!currentUser) return false
 
-    if (currentUser.role === "superadmin") return true
+    if (currentUser.role === "superadmin" || currentUser.role === "club_admin") return true
 
     if (currentUser.role === "coach") {
       return currentUser.assignedTeamIds?.includes(teamId) || false
@@ -485,7 +485,7 @@ export function ClubProvider({ children }: { children: ReactNode }) {
   const canDeleteFromTeam = (teamId: string) => {
     if (!currentUser) return false
 
-    if (currentUser.role === "superadmin") return true
+    if (currentUser.role === "superadmin" || currentUser.role === "club_admin") return true
 
     if (currentUser.role === "coach") {
       return currentUser.assignedTeamIds?.includes(teamId) || false
@@ -497,7 +497,7 @@ export function ClubProvider({ children }: { children: ReactNode }) {
   const getAccessibleTeams = () => {
     if (!currentUser) return []
 
-    if (currentUser.role === "superadmin") {
+    if (currentUser.role === "superadmin" || currentUser.role === "club_admin") {
       return teams
     }
 
