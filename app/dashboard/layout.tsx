@@ -6,7 +6,7 @@ import { useRouter, usePathname } from "next/navigation"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-import { Activity, LayoutDashboard, Shield, LogOut, Smartphone, Menu, X, Users, Settings } from "lucide-react"
+import { Activity, LayoutDashboard, Shield, LogOut, Smartphone, Menu, X, Users, Settings, PlayCircle } from "lucide-react"
 import { useClub } from "@/contexts/club-context"
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -28,6 +28,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const navigation = [
     { name: "Mis Equipos", href: "/dashboard", icon: LayoutDashboard, roles: ["superadmin", "coach", "player"] },
     { name: "Sala de Análisis", href: "/dashboard/analysis", icon: Activity, roles: ["superadmin", "coach"] },
+    { name: "Video Studio (AI)", href: "/dashboard/coach/video", icon: PlayCircle, roles: ["superadmin", "coach"] },
     { name: "Gestión de Clubes", href: "/dashboard/clubs", icon: Shield, roles: ["superadmin"] },
     { name: "Gestión de Accesos", href: "/dashboard/access", icon: Shield, roles: ["superadmin"] },
   ].filter((item) => item.roles.includes(currentUser.role))
@@ -111,18 +112,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               </Link>
             )
           })}
-
-          {/* Special Button: SIMULATE APP */}
-          {(currentUser.role === "superadmin" || currentUser.role === "coach") && (
-            <div className="mt-8 px-2">
-              <Link href="/dashboard/external-app">
-                <div className="group relative flex items-center justify-center gap-2 rounded-lg border border-blue-500/30 bg-blue-500/10 px-4 py-3 text-sm font-bold text-blue-400 transition-all hover:bg-blue-500/20 hover:text-blue-300">
-                  <Smartphone className="h-4 w-4" />
-                  SIMULAR APP EXTERNA
-                </div>
-              </Link>
-            </div>
-          )}
         </nav>
 
         {/* Footer */}
