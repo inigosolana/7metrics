@@ -4,7 +4,7 @@ import { useState, useRef, useMemo } from "react"
 import { VideoSmartPlayer } from "./video-smart-player"
 import { ActionCutter } from "./action-cutter"
 import { Button } from "@/components/ui/button"
-import { Download, Trash2, Filter, Activity, Share2, BrainCircuit, Check, X, Loader2 } from "lucide-react"
+import { Download, Trash2, Filter, Activity, Share2, BrainCircuit, Check, X, Loader2, Film } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -62,6 +62,25 @@ export function VideoStudioLayout({ videoUrl, initialActions = [] }: VideoStudio
         // If we click same timestamp twice, it won't trigger change.
         // A random epsilon could fix this, or a timestamp in the prop.
         setTimeout(() => setSeekTarget(null), 100)
+    }
+
+    const handleDownloadClip = (action: VideoAction) => {
+        // Build the URL for the cut endpoint
+        const params = new URLSearchParams({
+            video: videoUrl,
+            start: action.startTime.toString(),
+            end: action.endTime.toString(),
+            label: `${action.eventType}_${action.teamId}_${action.playerId || 'unknown'}`
+        })
+        const url = `/api/video/cut?${params.toString()}`
+
+        // Trigger download
+        const a = document.createElement('a')
+        a.href = url
+        a.download = '' // filename is set by Content-Disposition header
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
     }
 
     const [isScanning, setIsScanning] = useState(false)
@@ -337,16 +356,16 @@ export function VideoStudioLayout({ videoUrl, initialActions = [] }: VideoStudio
                                                 {!action.isVerified && action.feedbackStatus === 'pending' && (
                                                     <div className="flex gap-2 mt-2">
                                                         <Button
-                                                            size="xs"
-                                                            className="h-6 gap-1 bg-green-600 hover:bg-green-700 text-white"
+                                                            size="sm"
+                                                            className="h-6 gap-1 bg-green-600 hover:bg-green-700 text-white text-[10px] px-2"
                                                             onClick={() => handleVerifyAction(action.id, 'approved')}
                                                         >
                                                             <Check className="w-3 h-3" /> Confirm
                                                         </Button>
                                                         <Button
-                                                            size="xs"
+                                                            size="sm"
                                                             variant="outline"
-                                                            className="h-6 gap-1 text-destructive border-destructive/50 hover:bg-destructive/10"
+                                                            className="h-6 gap-1 text-destructive border-destructive/50 hover:bg-destructive/10 text-[10px] px-2"
                                                             onClick={() => handleVerifyAction(action.id, 'rejected')}
                                                         >
                                                             <X className="w-3 h-3" /> Reject
@@ -355,7 +374,18 @@ export function VideoStudioLayout({ videoUrl, initialActions = [] }: VideoStudio
                                                 )}
                                             </div>
                                             <div className="flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity absolute right-2 top-2 bg-background/80 p-1 rounded backdrop-blur-sm">
-                                                <Button size="icon" variant="ghost" className="h-6 w-6" title="Download Metadata" onClick={() => handleDownloadData(action)}>
+                                                {action.isVerified && (
+                                                    <Button
+                                                        size="icon"
+                                                        variant="ghost"
+                                                        className="h-6 w-6 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                                                        title="Download Physical Clip (MP4)"
+                                                        onClick={() => handleDownloadClip(action)}
+                                                    >
+                                                        <Film className="w-3 h-3" />
+                                                    </Button>
+                                                )}
+                                                <Button size="icon" variant="ghost" className="h-6 w-6" title="Download Metadata (JSON)" onClick={() => handleDownloadData(action)}>
                                                     <Download className="w-3 h-3" />
                                                 </Button>
                                                 <Button
