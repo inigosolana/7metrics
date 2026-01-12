@@ -68,7 +68,7 @@ def load_models():
     
     return yolo, lrcn
 
-def extract_sequences_and_predict(video_path, yolo_model, lrcn_model):
+def extract_sequences_and_predict(video_path, yolo_model, lrcn_model, progress_callback=None):
     """
     Main pipeline:
     1. Detect/Track persons
@@ -188,8 +188,11 @@ def extract_sequences_and_predict(video_path, yolo_model, lrcn_model):
                             # tracks_buffer[track_id].clear() 
         
         frame_idx += 1
-        if frame_idx % 100 == 0:
+        if frame_idx % 20 == 0:
             sys.stderr.write(f"Processed {frame_idx} frames...\n")
+            if progress_callback:
+                percent = int((frame_idx / total_frames) * 100)
+                progress_callback(percent)
 
     cap.release()
     return events
@@ -257,17 +260,27 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--video", required=True)
     parser.add_argument("--export-clips", action='store_true', help="Export individual clips")
+    parser.add_argument("--progress-file", required=False, help="Path to write progress json")
     args = parser.parse_args()
     
+    def update_progress(p, s="analyzing"):
+        if args.progress_file:
+            try:
+                with open(args.progress_file, 'w') as f:
+                    json.dump({"progress": p, "status": s}, f)
+            except: pass
+
     try:
+        update_progress(1, "loading_models")
         yolo, lrcn = load_models()
-        raw_events = extract_sequences_and_predict(args.video, yolo, lrcn)
+        
+        update_progress(5, "analyzing_video")
+        raw_events = extract_sequences_and_predict(args.video, yolo, lrcn, progress_callback=lambda p: update_progress(5 + int(p * 0.8), "analyzing"))
+        
+        update_progress(90, "merging_events")
         final_events = merge_events(raw_events)
         
-        # Always export clips if user asked for it or we decide it's default
-        # For this user request, let's make it default if not specified, or just follow arg.
-        # User said "haz eso" implying full features.
-        
+        update_progress(95, "exporting_clips")
         # Create a job ID or unique folder name based on video name or time
         import time
         job_id = f"job_{int(time.time())}"
@@ -275,7 +288,10 @@ if __name__ == "__main__":
         
         export_clips(args.video, final_events, output_dir)
         
+        update_progress(100, "done")
+        
         print(json.dumps({"success": True, "events": final_events, "job_id": job_id}))
         
     except Exception as e:
         print(json.dumps({"success": False, "error": str(e)}))
+

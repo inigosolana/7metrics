@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { spawn } from 'child_process'
 import path from 'path'
+import fs from 'fs'
 
 export async function POST(req: Request) {
     try {
@@ -14,18 +15,27 @@ export async function POST(req: Request) {
         // Real AI Integration
         const pythonScript = path.join(process.cwd(), 'python', 'handball_pipeline.py')
 
-        // Resolve path if it's relative to public
+        // Resolve path: Ensure we point to the physical file in public/uploads
         let absoluteVideoPath = videoPath
-        if (!path.isAbsolute(videoPath)) {
-            // Remove leading slash if present for path.join correctness
-            const relativePath = videoPath.startsWith('/') ? videoPath.substring(1) : videoPath
+
+        // Fix for Windows: path.isAbsolute might return true for '/uploads/...' but we need the full C:\ path
+        if (videoPath.startsWith('/uploads') || videoPath.startsWith('\\uploads') || !path.isAbsolute(videoPath)) {
+            const relativePath = videoPath.replace(/^[\/\\]/, '') // Remove leading slash
             absoluteVideoPath = path.join(process.cwd(), 'public', relativePath)
         }
 
         console.log(`Running analysis on: ${absoluteVideoPath}`)
 
         return new Promise((resolve) => {
-            const pyProcess = spawn('python', [pythonScript, '--video', absoluteVideoPath])
+            // Create progress file path
+            const progressFile = `${absoluteVideoPath}.progress.json`;
+
+            const pyProcess = spawn('python', [
+                pythonScript,
+                '--video', absoluteVideoPath,
+                '--progress-file', progressFile,
+                '--export-clips' // Defaulting to export clips as per user preference
+            ]);
 
             let dataString = ''
             let errorString = ''
@@ -49,6 +59,15 @@ export async function POST(req: Request) {
                 } else {
                     try {
                         const result = JSON.parse(dataString)
+                        // Delete progress file after successful processing
+                        try {
+                            if (fs.existsSync(progressFile)) {
+                                fs.unlinkSync(progressFile);
+                                console.log(`Deleted progress file: ${progressFile}`);
+                            }
+                        } catch (e) {
+                            console.error(`Failed to delete progress file ${progressFile}:`, e);
+                        }
                         resolve(NextResponse.json(result))
                     } catch (e) {
                         console.error("JSON Parse Error:", dataString)

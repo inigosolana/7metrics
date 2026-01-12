@@ -199,22 +199,30 @@ export default function VideoAnalysisPage() {
                                         setTimeLeft(estimatedSeconds)
                                         setProgress(0)
 
-                                        // Start fake progress
-                                        const interval = setInterval(() => {
-                                            setTimeLeft(prev => {
-                                                const newTime = Math.max(0, prev - 1)
-                                                // Update progress inversely
-                                                const newProgress = Math.min(95, ((estimatedSeconds - newTime) / estimatedSeconds) * 100)
-                                                setProgress(newProgress)
-                                                return newTime
-                                            })
+                                        // Real Status Polling
+                                        // The scan request is blocking, so we need a separate interval to poll status
+
+                                        const statusInterval = setInterval(async () => {
+                                            if (!videoUrl) return
+                                            try {
+                                                const res = await fetch(`/api/ai/status?videoPath=${encodeURIComponent(videoUrl)}`)
+                                                const data = await res.json()
+                                                if (data.success && typeof data.progress === 'number') {
+                                                    setProgress(data.progress)
+                                                    // Optional: Update status text if we added that state
+                                                }
+                                            } catch (e) {
+                                                console.error("Status poll error", e)
+                                            }
                                         }, 1000)
 
-                                        await handleModeSelect('auto')
-
-                                        clearInterval(interval)
-                                        setProgress(100)
-                                        setTimeLeft(0)
+                                        try {
+                                            await handleModeSelect('auto')
+                                        } finally {
+                                            clearInterval(statusInterval)
+                                            setProgress(100)
+                                            setTimeLeft(0)
+                                        }
                                     } else {
                                         handleModeSelect('auto')
                                     }
@@ -248,7 +256,7 @@ export default function VideoAnalysisPage() {
                                 <Progress value={progress} className="h-3 w-full" />
                                 <div className="flex justify-between text-xs text-muted-foreground px-1">
                                     <span>Progress</span>
-                                    <span>~{Math.floor(timeLeft / 60)}:{(timeLeft % 60).toString().padStart(2, '0')} remaining</span>
+                                    <span>{Math.round(progress)}% completed</span>
                                 </div>
                             </div>
                             <p className="text-xs text-muted-foreground pt-2">
