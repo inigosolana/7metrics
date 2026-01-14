@@ -37,8 +37,8 @@ export default function PlayersPage() {
     updatePlayer,
     deletePlayer,
     getPlayersByTeam,
-    canEdit,
-    canDelete,
+    canEditTeam,
+    canDeleteFromTeam,
   } = useClub()
   const accessibleTeams = getAccessibleTeams()
   const [selectedTeam, setSelectedTeam] = useState(accessibleTeams[0]?.id || "")
@@ -127,7 +127,7 @@ export default function PlayersPage() {
               ))}
             </SelectContent>
           </Select>
-          {canEdit() && (
+          {canEditTeam(selectedTeam) && (
             <Button onClick={handleAddPlayer} className="bg-primary text-primary-foreground hover:bg-primary/90">
               <Plus className="mr-2 h-4 w-4" />
               Añadir Jugador
@@ -148,7 +148,7 @@ export default function PlayersPage() {
             <div className="flex flex-col items-center justify-center py-12 text-center">
               <UserCircle className="h-12 w-12 text-muted-foreground mb-4" />
               <p className="text-muted-foreground">No hay jugadores registrados en este equipo</p>
-              {canEdit() && (
+              {canEditTeam(selectedTeam) && (
                 <Button
                   onClick={handleAddPlayer}
                   variant="outline"
@@ -166,7 +166,7 @@ export default function PlayersPage() {
                   <TableHead className="text-muted-foreground">Dorsal</TableHead>
                   <TableHead className="text-muted-foreground">Nombre</TableHead>
                   <TableHead className="text-muted-foreground">Posición</TableHead>
-                  {canEdit() && <TableHead className="text-right text-muted-foreground">Acciones</TableHead>}
+                  {canEditTeam(selectedTeam) && <TableHead className="text-right text-muted-foreground">Acciones</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -175,7 +175,7 @@ export default function PlayersPage() {
                     <TableCell className="font-bold text-primary">{player.number}</TableCell>
                     <TableCell className="text-card-foreground">{player.name}</TableCell>
                     <TableCell className="text-card-foreground">{player.position}</TableCell>
-                    {canEdit() && (
+                    {canEditTeam(selectedTeam) && (
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-2">
                           <Button
@@ -186,7 +186,7 @@ export default function PlayersPage() {
                           >
                             <Pencil className="h-4 w-4" />
                           </Button>
-                          {canDelete() && (
+                          {canDeleteFromTeam(selectedTeam) && (
                             <Button
                               variant="ghost"
                               size="icon"

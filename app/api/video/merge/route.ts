@@ -3,7 +3,7 @@ import { spawn } from 'child_process'
 import path from 'path'
 import fs from 'fs'
 
-export async function POST(req: Request) {
+export async function POST(req: Request): Promise<NextResponse> {
     try {
         const body = await req.json()
         const { clips, outputName } = body
