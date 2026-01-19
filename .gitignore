@@ -40,3 +40,9 @@ venv/
 
 __pycache__/
 Full-Handball-Dataset-1/
+research_thesis_repo/
+public/clips/
+public/uploads/
+*.pt
+!python/models/best.pt
+!yolov8n.pt
