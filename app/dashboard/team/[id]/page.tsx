@@ -1,6 +1,6 @@
 "use client"
 
-import { use, useState } from "react"
+import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { useClub } from "@/contexts/club-context"
 import { Button } from "@/components/ui/button"
@@ -31,9 +31,8 @@ const positions = [
   "Pivote",
 ]
 
-export default function TeamDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const resolvedParams = use(params)
-  const teamId = resolvedParams.id
+export default function TeamDetailPage({ params }: { params: { id: string } }) {
+  const teamId = params.id
   const router = useRouter()
   const {
     currentUser,
@@ -394,13 +393,12 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
                           <TableCell className="text-center text-muted-foreground">{stats.totalTurnovers}</TableCell>
                           <TableCell className="text-right">
                             <span
-                              className={`px-2 py-1 rounded-full text-xs font-bold ${
-                                efficiency >= 70
-                                  ? "bg-green-500/20 text-green-400"
-                                  : efficiency >= 50
-                                    ? "bg-yellow-500/20 text-yellow-400"
-                                    : "bg-red-500/20 text-red-400"
-                              }`}
+                              className={`px-2 py-1 rounded-full text-xs font-bold ${efficiency >= 70
+                                ? "bg-green-500/20 text-green-400"
+                                : efficiency >= 50
+                                  ? "bg-yellow-500/20 text-yellow-400"
+                                  : "bg-red-500/20 text-red-400"
+                                }`}
                             >
                               {efficiency.toFixed(1)}%
                             </span>
@@ -449,13 +447,12 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
                         <TableCell className="text-center text-muted-foreground">{stats.totalTurnovers}</TableCell>
                         <TableCell className="text-right">
                           <span
-                            className={`px-2 py-1 rounded-full text-xs font-bold ${
-                              efficiency >= 70
-                                ? "bg-green-500/20 text-green-400"
-                                : efficiency >= 50
-                                  ? "bg-yellow-500/20 text-yellow-400"
-                                  : "bg-red-500/20 text-red-400"
-                            }`}
+                            className={`px-2 py-1 rounded-full text-xs font-bold ${efficiency >= 70
+                              ? "bg-green-500/20 text-green-400"
+                              : efficiency >= 50
+                                ? "bg-yellow-500/20 text-yellow-400"
+                                : "bg-red-500/20 text-red-400"
+                              }`}
                           >
                             {efficiency.toFixed(1)}%
                           </span>
@@ -687,9 +684,8 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
                   {playerStats.shotZones.map((shot, idx) => (
                     <div
                       key={idx}
-                      className={`absolute w-3 h-3 rounded-full blur-[2px] transform -translate-x-1/2 -translate-y-1/2 ${
-                        shot.result === "goal" ? "bg-primary shadow-[0_0_8px_var(--primary)]" : "bg-white/40"
-                      }`}
+                      className={`absolute w-3 h-3 rounded-full blur-[2px] transform -translate-x-1/2 -translate-y-1/2 ${shot.result === "goal" ? "bg-primary shadow-[0_0_8px_var(--primary)]" : "bg-white/40"
+                        }`}
                       style={{ left: `${shot.x}%`, top: `${shot.y}%` }}
                     />
                   ))}

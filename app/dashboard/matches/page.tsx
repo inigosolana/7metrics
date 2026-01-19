@@ -8,28 +8,46 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Loader2, Calendar, Trophy, ArrowRight } from "lucide-react"
 
-import { getMatchesAction } from "@/app/actions/sevenmetrics"
+import { getMatchesAction, deleteMatchAction } from "@/app/actions/sevenmetrics"
+import { useToast } from "@/components/ui/use-toast"
+import { Trash2 } from "lucide-react"
 
 export default function MatchesPage() {
     const router = useRouter()
+    const { toast } = useToast()
     const [matches, setMatches] = useState<Match[]>([])
     const [loading, setLoading] = useState(true)
 
-    useEffect(() => {
-        const loadMatches = async () => {
-            try {
-                const response = await getMatchesAction()
-                if (response.success && response.data) {
-                    setMatches(response.data)
-                }
-            } catch (error) {
-                console.error("Failed to load matches:", error)
-            } finally {
-                setLoading(false)
+    const loadMatches = async () => {
+        setLoading(true)
+        try {
+            const response = await getMatchesAction()
+            if (response.success && response.data) {
+                setMatches(response.data)
             }
+        } catch (error) {
+            console.error("Failed to load matches:", error)
+        } finally {
+            setLoading(false)
         }
+    }
+
+    useEffect(() => {
         loadMatches()
     }, [])
+
+    const handleDelete = async (e: React.MouseEvent, matchId: string) => {
+        e.stopPropagation() // Prevent card click navigation
+        if (!confirm("¿Seguro que quieres borrar este partido? Esta acción no se puede deshacer.")) return
+
+        const res = await deleteMatchAction(matchId)
+        if (res.success) {
+            toast({ title: "Partido eliminado", description: "El partido ha sido borrado correctamente.", className: "bg-green-600 text-white" })
+            loadMatches() // Refresh list
+        } else {
+            toast({ title: "Error", description: "No se pudo borrar el partido.", variant: "destructive" })
+        }
+    }
 
     if (loading) {
         return (
@@ -65,9 +83,20 @@ export default function MatchesPage() {
                     {matches.map((match) => (
                         <Card
                             key={match.id}
-                            className="bg-[#0A0A0A] border-border/50 hover:border-primary/50 transition-all cursor-pointer group"
+                            className="bg-[#0A0A0A] border-border/50 hover:border-primary/50 transition-all cursor-pointer group relative"
                             onClick={() => router.push(`/dashboard/matches/${match.id}`)}
                         >
+                            <div className="absolute top-3 right-3 z-10 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <Button
+                                    variant="destructive"
+                                    size="icon"
+                                    className="h-8 w-8"
+                                    onClick={(e) => handleDelete(e, match.id!)}
+                                >
+                                    <Trash2 className="h-4 w-4" />
+                                </Button>
+                            </div>
+
                             <CardHeader className="pb-3">
                                 <div className="flex justify-between items-start mb-2">
                                     <Badge variant={match.status === 'FINISHED' ? 'default' : 'secondary'} className="uppercase text-[10px]">

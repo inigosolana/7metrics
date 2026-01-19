@@ -83,6 +83,9 @@ export const metricsApi = {
     finishMatch: async (matchId: string) => {
         return apiClient.post(`/matches/${matchId}/finish`);
     },
+    deleteMatch: async (matchId: string) => {
+        return apiClient.delete(`/matches/${matchId}`);
+    },
 
     // Players
     createPlayer: async (matchId: string, player: Player): Promise<Player> => {

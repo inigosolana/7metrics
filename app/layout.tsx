@@ -31,6 +31,8 @@ export const metadata: Metadata = {
   },
 }
 
+import { ToastProvider } from "@/components/ui/use-toast"
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -39,7 +41,11 @@ export default function RootLayout({
   return (
     <html lang="es" className="dark">
       <body className={`${inter.variable} font-sans antialiased bg-background text-foreground`}>
-        <ClubProvider>{children}</ClubProvider>
+        <ClubProvider>
+          <ToastProvider>
+            {children}
+          </ToastProvider>
+        </ClubProvider>
         <Analytics />
       </body>
     </html>
