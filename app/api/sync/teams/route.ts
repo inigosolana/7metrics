@@ -1,4 +1,3 @@
-import { createClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
 
 // Mock data until DB is fully connected
@@ -26,34 +25,16 @@ const getMockTeams = (userId: string) => [
 ];
 
 export async function GET(request: Request) {
-    const supabase = await createClient();
-
-    // 1. Authenticate the External App User
-    const {
-        data: { user },
-        error: authError,
-    } = await supabase.auth.getUser();
-
-    if (authError || !user) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    // Stubbed: Supabase removed. Auth check skipped.
+    // Assuming anonymous access or internal use for now.
+    const userId = "mock-user-id";
 
     try {
-        // 2. Fetch Teams assigned to this Coach
-        // For now, we return mock data, but this should query:
-        // select * from teams where coach_id = user.id (or via team_coaches table)
-
-        // const { data: teams, error } = await supabase
-        //   .from('teams')
-        //   .select('*, players(*)')
-        //   .eq('coach_id', user.id);
-
-        // Using mock data for demonstration as per current file structure
-        const teams = getMockTeams(user.id);
+        const teams = getMockTeams(userId);
 
         return NextResponse.json({
             data: {
-                matches_synced: 0, // Metadata example
+                matches_synced: 0,
                 teams: teams
             }
         });

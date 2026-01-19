@@ -1,6 +1,8 @@
 "use client"
 
-import { createContext, useContext, useState, type ReactNode } from "react"
+import { createContext, useContext, useState, useEffect, type ReactNode } from "react"
+import { metricsApi } from "@/lib/api/client"
+import { getMatchesAction } from "@/app/actions/sevenmetrics"
 
 export type UserRole = "superadmin" | "club_admin" | "coach" | "player"
 
@@ -438,6 +440,36 @@ export function ClubProvider({ children }: { children: ReactNode }) {
   const [players, setPlayers] = useState<Player[]>(initialPlayers)
   const [matches, setMatches] = useState<Match[]>(initialMatches)
   const [coaches, setCoaches] = useState<User[]>(initialCoaches)
+
+  // <UPDATE> Fetch matches from External API
+  useEffect(() => {
+    const fetchMatches = async () => {
+      try {
+        const response = await getMatchesAction()
+        const externalMatches = response.success && response.data ? response.data : []
+
+        const mappedMatches: Match[] = externalMatches.map(m => ({
+          id: m.id || 'unknown',
+          date: m.created_at ? new Date(m.created_at) : new Date(),
+          teamId: '1',
+          teamName: m.team_a_name,
+          rival: m.team_b_name,
+          teamScore: m.local_score || 0,
+          rivalScore: m.visitor_score || 0,
+          stats: []
+        }))
+
+        if (mappedMatches.length > 0) {
+          setMatches(mappedMatches)
+        }
+      } catch (error) {
+        console.error("Failed to fetch matches from external API (via Server Action):", error)
+      }
+    }
+
+    fetchMatches()
+  }, [])
+
 
   const login = (user: User) => {
     setCurrentUser(user)

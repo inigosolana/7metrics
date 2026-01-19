@@ -31,7 +31,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     { name: "Video Studio (AI)", href: "/dashboard/coach/video", icon: PlayCircle, roles: ["superadmin", "club_admin", "coach"] },
     { name: "Plantilla Técnica", href: "/dashboard/admin/staff", icon: Users, roles: ["superadmin", "club_admin"] },
     { name: "Gestión de Clubes", href: "/dashboard/clubs", icon: Shield, roles: ["superadmin"] },
+    { name: "Gestión de Clubes", href: "/dashboard/clubs", icon: Shield, roles: ["superadmin"] },
     { name: "Gestión de Accesos", href: "/dashboard/access", icon: Shield, roles: ["superadmin"] },
+    { name: "Partidos (Botonera)", href: "/dashboard/matches", icon: Activity, roles: ["superadmin", "club_admin", "coach", "player"] },
   ].filter((item) => item.roles.includes(currentUser.role))
 
   const handleLogout = () => {
