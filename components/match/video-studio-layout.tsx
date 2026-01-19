@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef, useMemo, useEffect } from "react"
+import { useState, useRef, useMemo } from "react"
 import { VideoSmartPlayer } from "./video-smart-player"
 import { ActionCutter } from "./action-cutter"
 import { Button } from "@/components/ui/button"
@@ -26,7 +26,6 @@ export interface VideoAction {
     isVerified?: boolean
     confidenceScore?: number
     feedbackStatus?: 'pending' | 'approved' | 'rejected' | 'corrected'
-    clipPath?: string
 }
 
 interface VideoStudioLayoutProps {
@@ -43,19 +42,6 @@ export function VideoStudioLayout({ videoUrl, initialActions = [] }: VideoStudio
     const [showFilters, setShowFilters] = useState(false)
     const [filterTeam, setFilterTeam] = useState<string>("all")
     const [filterPlayer, setFilterPlayer] = useState<string>("")
-    const [selectedPhase, setSelectedPhase] = useState<string>("all")
-
-    // New State for "Montage" (Multi-Select)
-    const [selectedActionIds, setSelectedActionIds] = useState<Set<string>>(new Set())
-    const [isMerging, setIsMerging] = useState(false)
-
-    // New State for "Edit Mode" (Correcting AI)
-    const [editingActionId, setEditingActionId] = useState<string | null>(null)
-    const [editForm, setEditForm] = useState<Partial<VideoAction>>({})
-
-    useEffect(() => {
-        setActions(initialActions)
-    }, [initialActions])
 
     const handleSaveAction = (newAction: any) => {
         const actionWithId = {
@@ -71,76 +57,38 @@ export function VideoStudioLayout({ videoUrl, initialActions = [] }: VideoStudio
 
     const handleJumpToAction = (time: number) => {
         setSeekTarget(time)
+        // Reset seek target after short delay to allow re-seek if needed, 
+        // though the useEffect in player handles changes.
+        // If we click same timestamp twice, it won't trigger change.
+        // A random epsilon could fix this, or a timestamp in the prop.
         setTimeout(() => setSeekTarget(null), 100)
     }
 
     const handleDownloadClip = (action: VideoAction) => {
-        if (action.clipPath) {
-            // Direct download if file exists
-            const a = document.createElement('a')
-            a.href = action.clipPath
-            a.download = `clip_${action.eventType}_${action.startTime.toFixed(0)}.mp4`
-            document.body.appendChild(a)
-            a.click()
-            document.body.removeChild(a)
-        } else {
-            // Fallback to on-the-fly cut (not implemented fully, but keeping logic structure)
-            const params = new URLSearchParams({
-                video: videoUrl,
-                start: action.startTime.toString(),
-                end: action.endTime.toString(),
-                label: `${action.eventType}_${action.teamId}_${action.playerId || 'unknown'}`
-            })
-            // For now just alert if no clip
-            alert("No pre-generated clip available for this action.")
-        }
+        // Build the URL for the cut endpoint
+        const params = new URLSearchParams({
+            video: videoUrl,
+            start: action.startTime.toString(),
+            end: action.endTime.toString(),
+            label: `${action.eventType}_${action.teamId}_${action.playerId || 'unknown'}`
+        })
+        const url = `/api/video/cut?${params.toString()}`
+
+        // Trigger download
+        const a = document.createElement('a')
+        a.href = url
+        a.download = '' // filename is set by Content-Disposition header
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
     }
 
     const [isScanning, setIsScanning] = useState(false)
-    const [scanProgress, setScanProgress] = useState(0)
-    const [scanStatus, setScanStatus] = useState("")
-    const [scanEta, setScanEta] = useState<number | null>(null)
-
-    // Polling for progress
-    useEffect(() => {
-        let interval: NodeJS.Timeout
-        if (isScanning) {
-            interval = setInterval(async () => {
-                try {
-                    const filename = videoUrl.split('/').pop()
-                    if (!filename) return
-
-                    const res = await fetch(`/api/video/status?filename=${encodeURIComponent(filename)}`)
-                    const data = await res.json()
-                    if (data.progress !== undefined) {
-                        setScanProgress(data.progress || 0)
-                        setScanStatus(data.status || "")
-                        setScanEta(data.eta_seconds || null)
-                    }
-                } catch (e) {
-                    console.error("Poll Error", e)
-                }
-            }, 1000)
-        }
-        return () => clearInterval(interval)
-    }, [isScanning, videoUrl])
 
     const handleAiScan = async () => {
         setIsScanning(true)
-        setScanProgress(0)
-        setScanStatus("starting")
         try {
-            const filename = videoUrl.split('/').pop()
-            if (!filename) {
-                console.error("No filename found")
-                return
-            }
-
-            const res = await fetch('/api/video/analyze', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ filename })
-            })
+            const res = await fetch('/api/ai/scan', { method: 'POST' })
             const data = await res.json()
 
             if (data.success && data.events) {
@@ -150,14 +98,13 @@ export function VideoStudioLayout({ videoUrl, initialActions = [] }: VideoStudio
                     endTime: e.end_time || e.time_seconds + 5,
                     eventType: e.event_type,
                     teamId: e.team_id,
-                    playerId: '',
+                    playerId: '', // AI might not know player yet
                     tags: e.tags || [],
                     phase: e.phase,
                     state: e.state,
                     isVerified: false,
                     confidenceScore: e.confidence_score,
-                    feedbackStatus: 'pending',
-                    clipPath: e.clip_path
+                    feedbackStatus: 'pending'
                 }))
                 setActions(prev => [...prev, ...aiActions])
             }
@@ -165,38 +112,24 @@ export function VideoStudioLayout({ videoUrl, initialActions = [] }: VideoStudio
             console.error("AI Scan failed", error)
         } finally {
             setIsScanning(false)
-            setScanProgress(0)
-            setScanEta(null)
         }
     }
 
     const handleVerifyAction = (id: string, status: 'approved' | 'rejected') => {
-        // Find next pending action before modifying state
-        // We use filteredActions to ensure we follow the user's current view list
-        const currentIndex = filteredActions.findIndex(a => a.id === id)
-        let nextAction = null
-
-        // Search forward from current index
-        for (let i = currentIndex + 1; i < filteredActions.length; i++) {
-            if (!filteredActions[i].isVerified && filteredActions[i].feedbackStatus === 'pending') {
-                nextAction = filteredActions[i]
-                break
-            }
+        setActions(prev => prev.map(a => {
+            if (a.id !== id) return a
+            if (status === 'rejected') return { ...a, feedbackStatus: 'rejected' } // Or delete? Let's keep marked as rejected for training
+            return { ...a, isVerified: true, feedbackStatus: 'approved' }
+        }))
+        // If rejected, we might want to filter it out from visuals or keep it greyed out?
+        if (status === 'rejected') {
+            // Option: Remove from list immediately or keep 'deleted' state
+            // For "Learning Loop", keeping it as "Rejected" is valuable.
+            // But for UI clutter, maybe hide it.
+            // Let's hide it from the main list but keep in DB (logic for later).
+            // For now, let's just remove it from the view effectively.
+            setActions(prev => prev.filter(a => a.id !== id))
         }
-
-        if (nextAction) {
-            handleJumpToAction(nextAction.startTime)
-        }
-
-        setActions(prev => {
-            if (status === 'rejected') {
-                return prev.filter(a => a.id !== id)
-            }
-            return prev.map(a => {
-                if (a.id !== id) return a
-                return { ...a, isVerified: true, feedbackStatus: 'approved' }
-            })
-        })
     }
 
     const handleDownloadData = (action: VideoAction) => {
@@ -212,74 +145,11 @@ export function VideoStudioLayout({ videoUrl, initialActions = [] }: VideoStudio
         URL.revokeObjectURL(url)
     }
 
-    const toggleActionSelection = (id: string) => {
-        const newSet = new Set(selectedActionIds)
-        if (newSet.has(id)) {
-            newSet.delete(id)
-        } else {
-            newSet.add(id)
-        }
-        setSelectedActionIds(newSet)
-    }
-
-    const handleDownloadMontage = async () => {
-        const selectedClips = actions.filter(a => selectedActionIds.has(a.id) && a.clipPath)
-
-        if (selectedClips.length === 0) {
-            alert("No valid clips selected (only AI-detected clips can be merged currently)")
-            return
-        }
-
-        setIsMerging(true)
-        try {
-            const response = await fetch('/api/video/merge', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    clips: selectedClips.map(a => a.clipPath)
-                })
-            })
-
-            if (!response.ok) throw new Error("Merge failed")
-
-            const blob = await response.blob()
-            const url = window.URL.createObjectURL(blob)
-            const a = document.createElement('a')
-            a.href = url
-            a.download = `montage_${Date.now()}.mp4`
-            document.body.appendChild(a)
-            a.click()
-            document.body.removeChild(a)
-        } catch (error) {
-            console.error("Montage Error", error)
-            alert("Failed to create montage")
-        } finally {
-            setIsMerging(false)
-        }
-    }
-
-    const startEditing = (action: VideoAction) => {
-        setEditingActionId(action.id)
-        setEditForm({
-            eventType: action.eventType,
-            phase: action.phase,
-            // Add other fields you want to edit
-        })
-    }
-
-    const saveEdit = (id: string) => {
-        setActions(prev => prev.map(a =>
-            a.id === id ? { ...a, ...editForm } : a
-        ))
-        setEditingActionId(null)
-        setEditForm({})
-    }
-
     // Filtered Actions
     const filteredActions = useMemo(() => {
         return actions.filter(action => {
             if (filterTeam !== "all" && action.teamId !== filterTeam) return false
-            if (filterPlayer && !action.playerId.toLowerCase().includes(filterPlayer.toLowerCase())) return false
+            if (filterPlayer && action.playerId !== filterPlayer) return false
             return true
         })
     }, [actions, filterTeam, filterPlayer])
@@ -393,50 +263,23 @@ export function VideoStudioLayout({ videoUrl, initialActions = [] }: VideoStudio
                             onSave={handleSaveAction}
                         />
                     </div>
-                    <div className="flex items-center justify-between">
-                        <h3 className="font-semibold px-1">Recorded Actions ({filteredActions.length})</h3>
-                        <div className="flex gap-2">
-                            {selectedActionIds.size > 1 && (
-                                <Button
-                                    size="sm"
-                                    variant="outline"
-                                    className="gap-2 border-orange-500 text-orange-600 hover:bg-orange-50"
-                                    onClick={handleDownloadMontage}
-                                    disabled={isMerging}
-                                >
-                                    {isMerging ? <Loader2 className="w-3 h-3 animate-spin" /> : <Film className="w-3 h-3" />}
-                                    Merge ({selectedActionIds.size})
-                                </Button>
-                            )}
-                            <div className="flex flex-col gap-1 min-w-[200px] items-end">
-                                {isScanning ? (
-                                    <div className="w-full flex flex-col gap-1">
-                                        <div className="flex justify-between text-[10px] text-muted-foreground">
-                                            <span>{scanStatus}</span>
-                                            <span>{scanEta ? `${Math.ceil(scanEta)}s left` : `${scanProgress}%`}</span>
-                                        </div>
-                                        <div className="h-2 w-full bg-secondary rounded-full overflow-hidden">
-                                            <div
-                                                className="h-full bg-primary transition-all duration-500 ease-in-out"
-                                                style={{ width: `${scanProgress}%` }}
-                                            />
-                                        </div>
-                                    </div>
-                                ) : (
-                                    <Button size="sm" variant="outline" className="gap-2" onClick={handleAiScan}>
-                                        <BrainCircuit className="w-3 h-3" />
-                                        AI Auto-Clip
-                                    </Button>
-                                )}
-                            </div>
-                        </div>
-                    </div>
+                    {/* Card Container for Actions List starts here... (Action List kept below in next chunk if needed, but we need to close the TabsContent properly) */}
                     <Card className="flex-1 flex flex-col min-h-0 border-l-4 border-l-primary/20">
                         <CardHeader className="py-3 px-4 border-b">
                             <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-2">
                                     <Activity className="w-4 h-4 text-primary" />
                                     <CardTitle className="text-base">Actions ({filteredActions.length})</CardTitle>
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="ml-2 h-7 gap-1 text-xs border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 dark:bg-blue-950 dark:border-blue-800 dark:text-blue-300"
+                                        onClick={handleAiScan}
+                                        disabled={isScanning}
+                                    >
+                                        {isScanning ? <Loader2 className="w-3 h-3 animate-spin" /> : <BrainCircuit className="w-3 h-3" />}
+                                        {isScanning ? "Scanning..." : "AI Auto-Clip"}
+                                    </Button>
                                 </div>
                                 <div className="flex items-center gap-1">
                                     <Button variant={showFilters ? "secondary" : "ghost"} size="icon" className="h-8 w-8" onClick={() => setShowFilters(!showFilters)}>
@@ -461,8 +304,8 @@ export function VideoStudioLayout({ videoUrl, initialActions = [] }: VideoStudio
                                     <Input
                                         className="h-8 text-xs"
                                         placeholder="Player #"
-                                        value={filterPlayer} // Assuming filterPlayer state exists or needs to be re-added if I lost it
-                                        onChange={(e) => setFilterPlayer && setFilterPlayer(e.target.value)}
+                                        value={filterPlayer}
+                                        onChange={(e) => setFilterPlayer(e.target.value)}
                                     />
                                 </div>
                             )}
@@ -476,80 +319,37 @@ export function VideoStudioLayout({ videoUrl, initialActions = [] }: VideoStudio
                                             key={action.id}
                                             className={`
                                                 relative border rounded-lg p-3 hover:shadow-md transition-shadow flex items-start gap-3 group
-                                                ${!action.isVerified ? 'border-dashed border-blue-300 dark:border-blue-700 bg-blue-50/50 dark:bg-blue-900/20' : 'bg-background'}
-                                                ${selectedActionIds.has(action.id) ? 'ring-2 ring-primary border-primary' : ''}
+                                                ${!action.isVerified && action.confidenceScore ? 'border-dashed border-blue-300 dark:border-blue-700 bg-blue-50/50 dark:bg-blue-900/20' : 'bg-background'}
                                             `}
                                         >
-                                            {/* Checkbox for Selection */}
-                                            <div className="absolute top-3 right-3 z-10">
-                                                <input
-                                                    type="checkbox"
-                                                    className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary cursor-pointer"
-                                                    checked={selectedActionIds.has(action.id)}
-                                                    onChange={() => toggleActionSelection(action.id)}
-                                                />
-                                            </div>
-
                                             <div
                                                 className="mt-1 cursor-pointer bg-primary/10 text-primary rounded px-2 py-1 text-xs font-mono font-bold hover:bg-primary/20"
-                                                onClick={() => {
-                                                    handleJumpToAction(action.startTime)
-                                                    // Optional: Select it for montage too? No, that might be confusing.
-                                                }}
-                                                title="Revisar Jugada"
+                                                onClick={() => handleJumpToAction(action.startTime)}
+                                                title="Click to Jump to Video"
                                             >
                                                 {formatTime(action.startTime)}
                                             </div>
-
-                                            <div className="flex-1 min-w-0 pr-8"> {/* Right padding for checkbox */}
+                                            <div className="flex-1 min-w-0">
                                                 <div className="flex items-center gap-2 flex-wrap">
                                                     <Badge variant={action.teamId === 'home' ? 'default' : 'secondary'} className="text-[10px] uppercase h-5 px-1.5">
                                                         {action.teamId === 'home' ? 'Home' : 'Away'}
                                                     </Badge>
-
-                                                    {!action.isVerified && (
-                                                        <span className="text-[10px] uppercase font-bold bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-sm">
-                                                            AI {Math.round((action.confidenceScore || 0) * 100)}%
-                                                        </span>
-                                                    )}
-
-                                                    {editingActionId === action.id ? (
-                                                        <div className="flex gap-2 items-center" onClick={e => e.stopPropagation()}>
-                                                            <select
-                                                                className="h-6 text-sm border rounded bg-background"
-                                                                value={editForm.eventType}
-                                                                onChange={e => setEditForm({ ...editForm, eventType: e.target.value })}
-                                                            >
-                                                                <option value="goal">Goal</option>
-                                                                <option value="save">Save</option>
-                                                                <option value="turnover">Turnover</option>
-                                                                <option value="miss">Miss</option>
-                                                                <option value="steal">Steal</option>
-                                                            </select>
-                                                            <Button size="sm" className="h-6 px-2 text-[10px]" onClick={() => saveEdit(action.id)}>Save</Button>
-                                                        </div>
-                                                    ) : (
-                                                        <span className="font-semibold text-sm capitalize flex items-center gap-1">
-                                                            {action.eventType.replace('_', ' ')}
-                                                            {!action.isVerified && (
-                                                                <span
-                                                                    className="text-xs text-muted-foreground hover:text-primary cursor-pointer underline ml-1 font-normal"
-                                                                    onClick={(e) => {
-                                                                        e.stopPropagation()
-                                                                        startEditing(action)
-                                                                    }}
-                                                                >
-                                                                    (Edit)
-                                                                </span>
-                                                            )}
-                                                        </span>
+                                                    <span className="font-semibold text-sm capitalize">{action.eventType.replace('_', ' ')}</span>
+                                                    {!action.isVerified && action.confidenceScore && (
+                                                        <Badge variant="outline" className="text-[10px] h-5 px-1 border-blue-400 text-blue-600">
+                                                            {(action.confidenceScore * 100).toFixed(0)}% AI
+                                                        </Badge>
                                                     )}
                                                 </div>
-
                                                 <div className="text-xs text-muted-foreground mt-1 flex gap-2 items-center">
                                                     <span>#{action.playerId || '?'}</span>
                                                     {action.tags.length > 0 && <span>•</span>}
                                                     {action.phase && <span className="text-[10px] bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 px-1 rounded">{action.phase}</span>}
+                                                    <div className="flex gap-1 overflow-hidden">
+                                                        {action.tags.map(tag => (
+                                                            <span key={tag} className="bg-muted px-1 rounded text-[10px]">{tag}</span>
+                                                        ))}
+                                                    </div>
                                                 </div>
 
                                                 {/* Verification Buttons */}
@@ -573,20 +373,21 @@ export function VideoStudioLayout({ videoUrl, initialActions = [] }: VideoStudio
                                                     </div>
                                                 )}
                                             </div>
-
-                                            {/* Hover Actions (Edit/Download/Delete) - Only show if not editing/selecting to avoid clutter? No, keep valid actions. */}
-                                            <div className="flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity absolute right-8 top-2 bg-background/80 p-1 rounded backdrop-blur-sm z-20">
+                                            <div className="flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity absolute right-2 top-2 bg-background/80 p-1 rounded backdrop-blur-sm">
                                                 {action.isVerified && (
                                                     <Button
                                                         size="icon"
                                                         variant="ghost"
                                                         className="h-6 w-6 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
-                                                        title="Download Clip"
+                                                        title="Download Physical Clip (MP4)"
                                                         onClick={() => handleDownloadClip(action)}
                                                     >
                                                         <Film className="w-3 h-3" />
                                                     </Button>
                                                 )}
+                                                <Button size="icon" variant="ghost" className="h-6 w-6" title="Download Metadata (JSON)" onClick={() => handleDownloadData(action)}>
+                                                    <Download className="w-3 h-3" />
+                                                </Button>
                                                 <Button
                                                     size="icon"
                                                     variant="ghost"
@@ -607,12 +408,12 @@ export function VideoStudioLayout({ videoUrl, initialActions = [] }: VideoStudio
                             </div>
                         </CardContent>
                     </Card>
-                </div >
-            </TabsContent >
+                </div>
+            </TabsContent>
 
             <TabsContent value="stats" className="flex-1 overflow-y-auto p-6">
                 <MatchStatsDashboard actions={actions} homeName="Home" awayName="Away" />
             </TabsContent>
-        </Tabs >
+        </Tabs>
     )
 }

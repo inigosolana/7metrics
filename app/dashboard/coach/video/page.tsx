@@ -8,7 +8,6 @@ import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Upload, Film, Wand2, ArrowLeft, BrainCircuit, PlayCircle, Loader2 } from "lucide-react"
 import { VideoStudioLayout } from "@/components/match/video-studio-layout"
-import { Progress } from "@/components/ui/progress"
 
 export default function VideoAnalysisPage() {
     const { matches } = useClub()
@@ -20,67 +19,13 @@ export default function VideoAnalysisPage() {
     // New State for Dual Mode
     const [analysisMode, setAnalysisMode] = useState<'none' | 'manual' | 'auto'>('none')
     const [initialActions, setInitialActions] = useState<any[]>([])
-
-    // Corrected State
     const [processing, setProcessing] = useState(false)
-    const [isUploading, setIsUploading] = useState(false)
-    const [uploadProgress, setUploadProgress] = useState(0)
 
-    // Progress Logic
-    const [progress, setProgress] = useState(0)
-    const [estimatedTime, setEstimatedTime] = useState(0)
-    const [timeLeft, setTimeLeft] = useState(0)
-
-    const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files[0]) {
             const file = e.target.files[0]
             setUploadedFile(file)
-
-            // Temporary blob for immediate feedback
-            const blobUrl = URL.createObjectURL(file)
-            setVideoUrl(blobUrl)
-
-            // Auto-upload using XHR for progress
-            setIsUploading(true)
-            setUploadProgress(0)
-
-            const xhr = new XMLHttpRequest()
-            xhr.open('POST', `/api/upload?filename=${encodeURIComponent(file.name)}`, true)
-            xhr.setRequestHeader('Content-Type', 'application/octet-stream')
-
-            xhr.upload.onprogress = (event) => {
-                if (event.lengthComputable) {
-                    const percentComplete = (event.loaded / event.total) * 100
-                    setUploadProgress(percentComplete)
-                }
-            }
-
-            xhr.onload = () => {
-                if (xhr.status === 200) {
-                    try {
-                        const data = JSON.parse(xhr.responseText)
-                        if (data.success) {
-                            setVideoUrl(data.url)
-                            console.log("Uploaded video to:", data.url)
-                        } else {
-                            alert("Upload failed. AI analysis might not work.")
-                        }
-                    } catch (e) {
-                        console.error("JSON Parse error", e)
-                    }
-                } else {
-                    alert("Upload error")
-                }
-                setIsUploading(false)
-            }
-
-            xhr.onerror = () => {
-                console.error("Upload failed")
-                alert("Upload failed")
-                setIsUploading(false)
-            }
-
-            xhr.send(file)
+            setVideoUrl(URL.createObjectURL(file))
         }
     }
 
@@ -98,15 +43,9 @@ export default function VideoAnalysisPage() {
             setProcessing(true)
             try {
                 // Determine if we should use Mock or Real AI based on env or just call the same endpoint
-                // We utilize the real python pipeline via /api/video/analyze
-                const filename = videoUrl.split('/').pop()
-                if (!filename) throw new Error("Could not determine filename from URL")
-
-                const res = await fetch('/api/video/analyze', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ filename })
-                })
+                // The endpoint /api/ai/scan is currently the mock one.
+                // We will update it later to call python if available.
+                const res = await fetch('/api/ai/scan', { method: 'POST' })
                 const data = await res.json()
 
                 if (data.success && data.events) {
@@ -116,14 +55,13 @@ export default function VideoAnalysisPage() {
                         endTime: e.end_time || e.time_seconds + 5,
                         eventType: e.event_type,
                         teamId: e.team_id,
-                        playerId: e.player_name || '',
+                        playerId: '',
                         tags: e.tags || [],
                         phase: e.phase,
                         state: e.state,
                         isVerified: false,
                         confidenceScore: e.confidence_score,
-                        feedbackStatus: 'pending',
-                        clipPath: e.clip_path
+                        feedbackStatus: 'pending'
                     }))
                     setInitialActions(aiActions)
                 }
@@ -135,18 +73,6 @@ export default function VideoAnalysisPage() {
         }
     }
 
-    // Helper to get video duration
-    const getVideoDuration = (file: File): Promise<number> => {
-        return new Promise((resolve) => {
-            const video = document.createElement('video')
-            video.preload = 'metadata'
-            video.onloadedmetadata = () => {
-                window.URL.revokeObjectURL(video.src)
-                resolve(video.duration)
-            }
-            video.src = URL.createObjectURL(file)
-        })
-    }
 
     // Intercept Studio View for Mode Selection
     if (viewMode === "studio") {
@@ -168,71 +94,24 @@ export default function VideoAnalysisPage() {
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl w-full">
                             {/* Manual Mode Card */}
                             <Card
-                                className={`cursor-pointer transition-all group ${isUploading ? 'opacity-90 pointer-events-none' : 'hover:border-primary hover:bg-primary/5'}`}
-                                onClick={() => !isUploading && handleModeSelect('manual')}
+                                className="cursor-pointer hover:border-primary hover:bg-primary/5 transition-all group"
+                                onClick={() => handleModeSelect('manual')}
                             >
                                 <CardHeader className="text-center">
                                     <div className="mx-auto p-4 rounded-full bg-secondary group-hover:bg-primary/20 transition-colors mb-4">
-                                        {isUploading ? <Loader2 className="w-12 h-12 animate-spin text-primary" /> : <PlayCircle className="w-12 h-12 text-primary" />}
+                                        <PlayCircle className="w-12 h-12 text-primary" />
                                     </div>
                                     <CardTitle>Manual Studio</CardTitle>
                                     <CardDescription>
-                                        Use the advanced cutting tools manually.
+                                        Use the advanced cutting tools manually. Best for precise, human-controlled analysis.
                                     </CardDescription>
-                                    {isUploading && (
-                                        <div className="pt-4 space-y-2">
-                                            <Progress value={uploadProgress} className="h-2" />
-                                            <p className="text-xs text-muted-foreground">{Math.round(uploadProgress)}% Uploaded</p>
-                                        </div>
-                                    )}
                                 </CardHeader>
                             </Card>
 
                             {/* AI Auto Mode Card */}
                             <Card
-                                className={`cursor-pointer transition-all group border-dashed border-2 ${isUploading ? 'opacity-90 pointer-events-none' : 'hover:border-blue-500 hover:bg-blue-50 dark:hover:bg-blue-950/30'}`}
-                                onClick={async () => {
-                                    if (isUploading) return
-                                    if (uploadedFile) {
-                                        const duration = await getVideoDuration(uploadedFile)
-                                        // Estimate: Processing takes roughly same time as video duration (1x) to be safe
-                                        const estimatedSeconds = Math.ceil(duration * 1.2)
-                                        setEstimatedTime(estimatedSeconds)
-                                        setTimeLeft(estimatedSeconds)
-                                        setProgress(0)
-
-                                        // Real Status Polling
-                                        // The scan request is blocking, so we need a separate interval to poll status
-
-                                        const statusInterval = setInterval(async () => {
-                                            if (!videoUrl) return
-                                            // Extract filename from URL (e.g., /uploads/myvideo.mp4 -> myvideo.mp4)
-                                            const filename = videoUrl.split('/').pop()
-                                            if (!filename) return
-
-                                            try {
-                                                const res = await fetch(`/api/video/status?filename=${encodeURIComponent(filename)}`)
-                                                const data = await res.json()
-                                                if (typeof data.progress === 'number') {
-                                                    setProgress(data.progress)
-                                                    // Optional: Update status text if we added that state
-                                                }
-                                            } catch (e) {
-                                                console.error("Status poll error", e)
-                                            }
-                                        }, 1000)
-
-                                        try {
-                                            await handleModeSelect('auto')
-                                        } finally {
-                                            clearInterval(statusInterval)
-                                            setProgress(100)
-                                            setTimeLeft(0)
-                                        }
-                                    } else {
-                                        handleModeSelect('auto')
-                                    }
-                                }}
+                                className="cursor-pointer hover:border-blue-500 hover:bg-blue-50 dark:hover:bg-blue-950/30 transition-all group border-dashed border-2"
+                                onClick={() => handleModeSelect('auto')}
                             >
                                 <CardHeader className="text-center">
                                     <div className="mx-auto p-4 rounded-full bg-blue-100 dark:bg-blue-900 group-hover:bg-blue-200 dark:group-hover:bg-blue-800 transition-colors mb-4">
@@ -247,27 +126,11 @@ export default function VideoAnalysisPage() {
                         </div>
                     </div>
                 ) : processing ? (
-                    <div className="flex-1 flex flex-col items-center justify-center gap-6 max-w-md mx-auto w-full">
-                        <div className="relative">
-                            <Loader2 className="w-16 h-16 animate-spin text-primary" />
-                            <div className="absolute inset-0 flex items-center justify-center text-xs font-bold">
-                                {Math.round(progress)}%
-                            </div>
-                        </div>
-                        <div className="text-center space-y-2 w-full">
+                    <div className="flex-1 flex flex-col items-center justify-center gap-6">
+                        <Loader2 className="w-16 h-16 animate-spin text-primary" />
+                        <div className="text-center space-y-2">
                             <h3 className="text-2xl font-bold">AI is analyzing the match...</h3>
                             <p className="text-muted-foreground">Detecting events, tracking players, and analyzing phases.</p>
-
-                            <div className="space-y-1 pt-4">
-                                <Progress value={progress} className="h-3 w-full" />
-                                <div className="flex justify-between text-xs text-muted-foreground px-1">
-                                    <span>Progress</span>
-                                    <span>{Math.round(progress)}% completed</span>
-                                </div>
-                            </div>
-                            <p className="text-xs text-muted-foreground pt-2">
-                                Please do not close this tab. The process is running on the server.
-                            </p>
                         </div>
                     </div>
                 ) : (
