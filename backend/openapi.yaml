@@ -1,0 +1,393 @@
+openapi: 3.1.0
+info:
+  title: Antigravity Sports API
+  description: API para el análisis automatizado de vídeo de balonmano, generación de clips y estadísticas mediante visión por computador.
+  version: 1.0.0
+  contact:
+    name: Equipo de Arquitectura
+servers:
+  - url: /api/v1
+    description: Servidor Principal (v1)
+
+paths:
+  /upload:
+    post:
+      summary: Subir vídeo del partido
+      description: Carga un archivo de vídeo crudo para su procesamiento. Soporta MP4/MOV hasta 2GB.
+      operationId: uploadVideo
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: Archivo de vídeo del partido (mp4, mov).
+              required:
+                - file
+      responses:
+        '201':
+          description: Vídeo subido exitosamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VideoUploadResponse'
+              examples:
+                success:
+                  value:
+                    video_id: "550e8400-e29b-41d4-a716-446655440000"
+                    path: "/data/uploads/550e8400-e29b-41d4-a716-446655440000.mp4"
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /clipper/start:
+    post:
+      summary: Iniciar job de recorte de vídeo (Clipper)
+      description: Inicia el proceso asíncrono para detectar eventos y generar clips físicos (MP4).
+      operationId: startClipperJob
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClipRequest'
+      responses:
+        '202':
+          description: Job aceptado y encolado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobStatusResponse'
+              examples:
+                queued:
+                  value:
+                    job_id: "job_12345"
+                    status: "QUEUED"
+                    progress_percentage: 0
+                    created_at: "2023-10-27T10:00:00Z"
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /clipper/jobs/{job_id}:
+    get:
+      summary: Consultar estado del job de recorte
+      operationId: getClipperJobStatus
+      parameters:
+        - $ref: '#/components/parameters/JobId'
+      responses:
+        '200':
+          description: Estado actual del job
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobStatusResponse'
+              examples:
+                processing:
+                  value:
+                    job_id: "job_12345"
+                    status: "PROCESSING"
+                    progress_percentage: 45
+                    current_step: "Tracking players (ByteTrack)..."
+                    created_at: "2023-10-27T10:00:00Z"
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /clipper/download/single/{event_id}:
+    get:
+      summary: Descargar clip individual
+      description: Descarga el archivo MP4 de una acción específica (ej. un gol).
+      operationId: downloadSingleClip
+      parameters:
+        - name: event_id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: ID único del evento en el timeline
+      responses:
+        '200':
+          description: Archivo de vídeo
+          content:
+            video/mp4:
+              schema:
+                type: string
+                format: binary
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /clipper/download/zip/{job_id}:
+    get:
+      summary: Descargar todos los clips (ZIP)
+      description: Descarga un archivo ZIP con todos los clips organizados por carpetas.
+      operationId: downloadAllClips
+      parameters:
+        - $ref: '#/components/parameters/JobId'
+      responses:
+        '200':
+          description: Archivo ZIP comprimido
+          content:
+            application/zip:
+              schema:
+                type: string
+                format: binary
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /stats/start:
+    post:
+      summary: Iniciar análisis de estadísticas
+      description: Inicia el proceso asíncrono para generar datos JSON sin recorte de vídeo.
+      operationId: startStatsJob
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AnalysisRequest'
+      responses:
+        '202':
+          description: Job aceptado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobStatusResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /stats/jobs/{job_id}:
+    get:
+      summary: Consultar estado del job de estadísticas
+      operationId: getStatsJobStatus
+      parameters:
+        - $ref: '#/components/parameters/JobId'
+      responses:
+        '200':
+          description: Estado actual
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobStatusResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /stats/report/{job_id}:
+    get:
+      summary: Obtener reporte final (JSON)
+      description: Devuelve el JSON completo con estadísticas y timeline de eventos.
+      operationId: getMatchReport
+      parameters:
+        - $ref: '#/components/parameters/JobId'
+      responses:
+        '200':
+          description: Reporte del partido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MatchReport'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+components:
+  parameters:
+    JobId:
+      name: job_id
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Identificador único del trabajo de procesamiento
+
+  schemas:
+    # --- Input Schemas ---
+    ClipRequest:
+      type: object
+      required:
+        - video_id
+      properties:
+        video_id:
+          type: string
+          format: uuid
+          description: ID devuelto por el endpoint /upload
+        config:
+          type: object
+          properties:
+            include_actions:
+              type: array
+              items:
+                type: string
+                enum: [GOL, TIRO, ROBO, PARADA, PERDIDA, PENALTI, FALTA]
+              default: ["GOL", "TIRO"]
+            padding_seconds:
+              type: object
+              properties:
+                pre:
+                  type: integer
+                  default: 5
+                post:
+                  type: integer
+                  default: 3
+            export_format:
+              type: string
+              enum: [mp4, mov]
+              default: mp4
+
+    AnalysisRequest:
+      type: object
+      required:
+        - video_id
+      properties:
+        video_id:
+          type: string
+          format: uuid
+        config:
+          type: object
+          properties:
+            detect_teams:
+              type: boolean
+              default: true
+              description: Activar clustering K-Means para equipos
+            advanced_metrics:
+              type: boolean
+              default: false
+
+    # --- Output Schemas ---
+    VideoUploadResponse:
+      type: object
+      properties:
+        video_id:
+          type: string
+          format: uuid
+        path:
+          type: string
+
+    JobStatusResponse:
+      type: object
+      properties:
+        job_id:
+          type: string
+        status:
+          type: string
+          enum: [QUEUED, PROCESSING, COMPLETED, ERROR]
+        progress_percentage:
+          type: integer
+          minimum: 0
+          maximum: 100
+        current_step:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        error:
+          type: string
+          nullable: true
+
+    TimelineEvent:
+      type: object
+      properties:
+        event_id:
+          type: string
+        type:
+          type: string
+          enum: [GOL, TIRO, ROBO, PARADA, PERDIDA, PENALTI, FALTA]
+        timestamp:
+          type: number
+          format: float
+          description: Segundos desde el inicio del vídeo
+        frame_index:
+          type: integer
+        confidence:
+          type: number
+          format: float
+        actors:
+          type: object
+          properties:
+            team_id:
+              type: string
+              example: "Team_A"
+            player_tracker_id:
+              type: integer
+            jersey_number:
+              type: integer
+              nullable: true
+        clip_url:
+          type: string
+          format: uri
+          nullable: true
+
+    MatchReport:
+      type: object
+      properties:
+        match_id:
+          type: string
+        metadata:
+          type: object
+          properties:
+            duration:
+              type: number
+            fps:
+              type: integer
+            resolution:
+              type: string
+        summary_stats:
+          type: object
+          properties:
+            total_goals:
+              type: integer
+            total_shots:
+              type: integer
+            possession_split:
+              type: object
+              additionalProperties:
+                type: integer
+        timeline:
+          type: array
+          items:
+            $ref: '#/components/schemas/TimelineEvent'
+
+    ErrorResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+
+  responses:
+    BadRequest:
+      description: Solicitud incorrecta (ej. JSON malformado)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: Recurso no encontrado (Video ID o Job ID inexistente)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    PayloadTooLarge:
+      description: El archivo excede el límite permitido (ej. >2GB)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    UnprocessableEntity:
+      description: Error de validación (ej. formato de video no soportado)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    InternalServerError:
+      description: Error interno del servidor
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
