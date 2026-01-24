@@ -1,0 +1,8 @@
+{
+  "name": "7metrics - Elite Handball Analytics",
+  "description": "Next-Gen AI-driven sports intelligence platform for handball coaches, players, and club administrators. Features video analysis, biomechanics, and global team management.",
+  "requestFramePermissions": [
+    "microphone",
+    "camera"
+  ]
+}
