@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { analyzeImage } from '../services/geminiService';
 import VeoGenerator from '../components/VeoGenerator';
+import VideoProcessor from '../components/VideoProcessor';
 
 const CoachDashboard: React.FC = () => {
   const [showVeo, setShowVeo] = useState(false);
@@ -15,15 +16,15 @@ const CoachDashboard: React.FC = () => {
       reader.onloadend = async () => {
         const base64String = reader.result as string;
         const base64Data = base64String.split(',')[1];
-        
+
         try {
-           const result = await analyzeImage(base64Data, "Analyze the tactical formation in this handball frame. Identify defensive structure (e.g., 6:0, 5:1) and any obvious gaps.");
-           setAnalysisResult(result || "Analysis complete. No insights returned.");
+          const result = await analyzeImage(base64Data, "Analyze the tactical formation in this handball frame. Identify defensive structure (e.g., 6:0, 5:1) and any obvious gaps.");
+          setAnalysisResult(result || "Analysis complete. No insights returned.");
         } catch (err) {
-           console.error(err);
-           setAnalysisResult("Failed to analyze image. Please ensure your API key is valid.");
+          console.error(err);
+          setAnalysisResult("Failed to analyze image. Please ensure your API key is valid.");
         } finally {
-            setIsAnalyzing(false);
+          setIsAnalyzing(false);
         }
       };
       reader.readAsDataURL(file);
@@ -41,7 +42,7 @@ const CoachDashboard: React.FC = () => {
             <p className="text-[10px] uppercase tracking-widest text-slate-500 dark:text-stone-500 font-bold">Unified Pro</p>
           </div>
         </div>
-        
+
         <nav className="flex-1 px-4 py-2 space-y-8 overflow-y-auto custom-scrollbar">
           <div>
             <p className="px-2 mb-3 text-[10px] uppercase tracking-widest font-bold text-slate-400 dark:text-stone-600">Main</p>
@@ -60,7 +61,7 @@ const CoachDashboard: React.FC = () => {
               </a>
             </div>
           </div>
-          
+
           <div>
             <p className="px-2 mb-3 text-[10px] uppercase tracking-widest font-bold text-slate-400 dark:text-stone-600">Coaching</p>
             <div className="space-y-1">
@@ -74,7 +75,7 @@ const CoachDashboard: React.FC = () => {
               </a>
             </div>
           </div>
-          
+
           <div>
             <p className="px-2 mb-3 text-[10px] uppercase tracking-widest font-bold text-slate-400 dark:text-stone-600">Video Labs</p>
             <div className="space-y-1">
@@ -96,7 +97,7 @@ const CoachDashboard: React.FC = () => {
                   </div>
                 </div>
               </a>
-              <button 
+              <button
                 onClick={() => setShowVeo(true)}
                 className="w-full flex items-center justify-between px-3 py-2 rounded-lg text-slate-600 dark:text-stone-400 hover:bg-slate-100 dark:hover:bg-stone-800 transition-colors text-left"
               >
@@ -111,7 +112,7 @@ const CoachDashboard: React.FC = () => {
             </div>
           </div>
         </nav>
-        
+
         <div className="p-4 border-t border-slate-200 dark:border-stone-800 space-y-3">
           <button className="w-full flex items-center gap-3 p-3 rounded-xl bg-slate-100 dark:bg-stone-900/50 hover:bg-slate-200 dark:hover:bg-stone-800 transition-colors group">
             <span className="material-icons-outlined text-primary group-hover:scale-110 transition-transform">smart_toy</span>
@@ -156,101 +157,76 @@ const CoachDashboard: React.FC = () => {
         </header>
 
         <div className="px-8 pb-8 space-y-8">
-          {/* Top Section */}
+          {/* Video Innovation Labs */}
           <section>
-            <div className="flex items-center gap-2 mb-4">
-              <div className="w-1 h-6 bg-primary rounded-full"></div>
-              <h3 className="font-bold text-lg">Video Lab Hub</h3>
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-2">
+                <div className="w-1 h-6 bg-primary rounded-full"></div>
+                <h3 className="font-bold text-xl">AI Video Innovation Labs</h3>
+              </div>
+              <p className="text-xs text-slate-500 font-medium bg-slate-100 dark:bg-stone-900 px-3 py-1 rounded-full border border-slate-200 dark:border-stone-800">
+                Next-Gen Analysis Powered by Hyperion-7
+              </p>
             </div>
-            <div className="grid grid-cols-12 gap-6">
-              {/* Clip Library Card */}
-              <div className="col-span-12 lg:col-span-7 bg-slate-50 dark:bg-card-dark rounded-2xl p-6 border border-slate-200 dark:border-stone-800/50">
-                <div className="flex items-center justify-between mb-8">
-                  <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
-                      <span className="material-icons-outlined">movie</span>
-                    </div>
-                    <div>
-                      <h4 className="font-bold text-lg leading-none">Clip Library</h4>
-                      <p className="text-xs text-slate-500 dark:text-stone-500 mt-1">Manual tagging by Team & Player</p>
-                    </div>
-                  </div>
-                  <div className="flex flex-col items-end">
-                    <span className="font-mono text-xl font-bold">1,420</span>
-                    <span className="text-[10px] uppercase tracking-wider font-bold text-stone-500">Clips</span>
-                  </div>
-                </div>
-                <div className="grid grid-cols-3 gap-4 mb-6">
-                  <div className="bg-white dark:bg-stone-900/50 p-4 rounded-xl border border-slate-200 dark:border-stone-800/50">
-                    <p className="text-[10px] uppercase font-bold text-stone-500 mb-1">Fast Breaks</p>
-                    <p className="font-mono text-2xl font-bold">48</p>
-                  </div>
-                  <div className="bg-white dark:bg-stone-900/50 p-4 rounded-xl border border-slate-200 dark:border-stone-800/50">
-                    <p className="text-[10px] uppercase font-bold text-stone-500 mb-1">Defense 6:0</p>
-                    <p className="font-mono text-2xl font-bold">124</p>
-                  </div>
-                  <div className="bg-white dark:bg-stone-900/50 p-4 rounded-xl border border-slate-200 dark:border-stone-800/50">
-                    <p className="text-[10px] uppercase font-bold text-stone-500 mb-1">7m Throws</p>
-                    <p className="font-mono text-2xl font-bold">12</p>
-                  </div>
-                </div>
-                <button className="w-full py-3 bg-slate-200 dark:bg-stone-800/50 hover:bg-slate-300 dark:hover:bg-stone-800 text-xs font-bold uppercase tracking-widest rounded-xl transition-colors">
-                  Open Manual Tagger
-                </button>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {/* Tool 1: AI Clipper */}
+              <div className="h-full">
+                <VideoProcessor
+                  mode="clipper"
+                  title="Smart AI Clipper"
+                  description="Auto-crops actions by Team & Player (Gols, Shots, Stops)"
+                  icon="auto_awesome_motion"
+                  accentClass="bg-primary"
+                />
               </div>
 
-              {/* AI Analyzer Card */}
-              <div className="col-span-12 lg:col-span-5 bg-slate-50 dark:bg-card-dark rounded-2xl p-6 border border-slate-200 dark:border-stone-800/50 flex flex-col justify-between">
-                <div>
-                  <div className="flex items-center justify-between mb-8">
-                    <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-500">
-                        <span className="material-icons-outlined">memory</span>
-                      </div>
-                      <div>
-                        <h4 className="font-bold text-lg leading-none">AI Analyzer</h4>
-                        <p className="text-xs text-slate-500 dark:text-stone-500 mt-1">Automated tactical extraction</p>
-                      </div>
+              {/* Tool 2: AI Stats */}
+              <div className="h-full">
+                <VideoProcessor
+                  mode="stats"
+                  title="Automated Stats Hub"
+                  description="Real-time box score & tactical heatmaps extraction"
+                  icon="query_stats"
+                  accentClass="bg-indigo-600"
+                />
+              </div>
+
+              {/* Tool 3: Veo 3D Generator */}
+              <div className="bg-white dark:bg-card-dark rounded-2xl p-6 border border-slate-200 dark:border-stone-800/50 flex flex-col h-full shadow-sm hover:shadow-md transition-shadow group">
+                <div className="flex items-center justify-between mb-6">
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 rounded-xl bg-orange-500/10 flex items-center justify-center text-orange-500">
+                      <span className="material-icons-outlined text-2xl">sports_esports</span>
                     </div>
-                    <span className="flex items-center gap-1.5 px-2 py-1 bg-emerald-500/10 text-emerald-500 text-[10px] font-bold rounded-full uppercase">
-                      <span className="w-1 h-1 rounded-full bg-emerald-500"></span> Active
-                    </span>
+                    <div>
+                      <h4 className="font-bold text-lg leading-none dark:text-white">3D Drill Creator</h4>
+                      <p className="text-xs text-slate-500 dark:text-stone-500 mt-1">Prompt to 3D video & tactical drills</p>
+                    </div>
                   </div>
-                  
-                  {analysisResult ? (
-                     <div className="space-y-4">
-                       <div className="bg-surface-dark p-3 rounded-lg border border-white/5 max-h-32 overflow-y-auto">
-                          <p className="text-xs text-slate-300 whitespace-pre-line">{analysisResult}</p>
-                       </div>
-                     </div>
-                  ) : (
-                    <div className="space-y-4">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm font-medium">Match_24_Final_H1.mp4</span>
-                        <span className="font-mono text-sm font-bold text-emerald-500">85%</span>
-                      </div>
-                      <div className="w-full h-2 bg-slate-200 dark:bg-stone-800 rounded-full overflow-hidden">
-                        <div className="h-full bg-emerald-500 rounded-full" style={{ width: '85%' }}></div>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-[10px] text-stone-500 italic">Detecting player movement vectors...</span>
-                        <span className="text-[10px] text-stone-500 font-bold uppercase">ETR: 02:14</span>
-                      </div>
-                    </div>
-                  )}
+                  <span className="flex items-center gap-1.5 px-2 py-1 bg-orange-500/10 text-orange-500 text-[10px] font-bold rounded-full uppercase">
+                    <span className="w-1 h-1 rounded-full bg-orange-500"></span> Beta
+                  </span>
                 </div>
-                
-                <label className="w-full mt-6 py-3 border border-emerald-500/30 text-emerald-500 hover:bg-emerald-500/5 text-xs font-bold uppercase tracking-widest rounded-xl transition-colors text-center cursor-pointer flex items-center justify-center">
-                   {isAnalyzing ? (
-                       <span className="flex items-center gap-2">
-                           <span className="w-3 h-3 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin"></span>
-                           Processing...
-                       </span>
-                   ) : (
-                       "Upload Frame for AI Analysis"
-                   )}
-                   <input type="file" className="hidden" accept="image/*" onChange={handleFileUpload} disabled={isAnalyzing} />
-                </label>
+
+                <div className="flex-1 flex flex-col justify-center py-4">
+                  <div className="bg-slate-50 dark:bg-stone-900/30 rounded-xl p-6 border border-slate-200/50 dark:border-stone-800/20 text-center relative overflow-hidden">
+                    <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-orange-500 to-amber-500 opacity-50"></div>
+                    <span className="material-symbols-outlined text-4xl text-orange-500/30 mb-2">tactic</span>
+                    <p className="text-sm font-bold text-slate-700 dark:text-stone-300">"Explain a 5:1 screen play..."</p>
+                    <p className="text-[11px] text-slate-400 mt-2">Generate tactical animations from text prompts</p>
+                  </div>
+                </div>
+
+                <div className="mt-4">
+                  <button
+                    onClick={() => setShowVeo(true)}
+                    className="w-full py-3 bg-gradient-to-r from-orange-500 to-amber-600 text-white text-xs font-bold uppercase tracking-widest rounded-xl shadow-lg shadow-orange-500/20 transition-all hover:scale-[1.02] active:scale-[0.98] flex items-center justify-center gap-2"
+                  >
+                    <span className="material-icons-outlined text-sm">auto_fix_high</span>
+                    Launch Generator
+                  </button>
+                </div>
               </div>
             </div>
           </section>
