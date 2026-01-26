@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     COLAB_WORKER_URL: str = ""  # HTTP URL of the Colab worker
     
     # Public base URL for callbacks
-    PUBLIC_BASE_URL: str = "https://euphoniously-unquilted-nichole.ngrok-free.dev"
+    PUBLIC_BASE_URL: str = "http://localhost:8000"
     
     # Upload limits
     MAX_UPLOAD_BYTES: int = 2 * 1024 * 1024 * 1024  # 2GB default
