@@ -1,0 +1,317 @@
+{
+  "match_id": "job_d55f98d9eb4c",
+  "metadata": {
+    "duration": 2253.717437774332,
+    "fps": 60,
+    "resolution": "3840x2160"
+  },
+  "summary_stats": {
+    "total_goals": 1,
+    "total_shots": 13,
+    "possession_split": {
+      "Team_A": 34,
+      "Team_B": 65
+    }
+  },
+  "timeline": [
+    {
+      "event_id": "evt_001_robo",
+      "type": "ROBO",
+      "timestamp": 58.84,
+      "frame_index": 3530,
+      "confidence": 0.76,
+      "actors": {
+        "team_id": "Team_B",
+        "player_tracker_id": 3,
+        "jersey_number": 71
+      },
+      "clip_url": "/api/v1/clipper/download/single/evt_001_robo"
+    },
+    {
+      "event_id": "evt_002_tiro",
+      "type": "TIRO",
+      "timestamp": 228.32,
+      "frame_index": 13699,
+      "confidence": 0.83,
+      "actors": {
+        "team_id": "Team_B",
+        "player_tracker_id": 1,
+        "jersey_number": null
+      },
+      "clip_url": "/api/v1/clipper/download/single/evt_002_tiro"
+    },
+    {
+      "event_id": "evt_003_tiro",
+      "type": "TIRO",
+      "timestamp": 372.27,
+      "frame_index": 22335,
+      "confidence": 0.95,
+      "actors": {
+        "team_id": "Team_B",
+        "player_tracker_id": 10,
+        "jersey_number": 4
+      },
+      "clip_url": "/api/v1/clipper/download/single/evt_003_tiro"
+    },
+    {
+      "event_id": "evt_004_parada",
+      "type": "PARADA",
+      "timestamp": 586.52,
+      "frame_index": 35191,
+      "confidence": 0.95,
+      "actors": {
+        "team_id": "Team_B",
+        "player_tracker_id": 2,
+        "jersey_number": 84
+      },
+      "clip_url": "/api/v1/clipper/download/single/evt_004_parada"
+    },
+    {
+      "event_id": "evt_005_perdida",
+      "type": "PERDIDA",
+      "timestamp": 633.29,
+      "frame_index": 37997,
+      "confidence": 0.79,
+      "actors": {
+        "team_id": "Team_B",
+        "player_tracker_id": 6,
+        "jersey_number": null
+      },
+      "clip_url": "/api/v1/clipper/download/single/evt_005_perdida"
+    },
+    {
+      "event_id": "evt_006_robo",
+      "type": "ROBO",
+      "timestamp": 807.54,
+      "frame_index": 48452,
+      "confidence": 0.98,
+      "actors": {
+        "team_id": "Team_A",
+        "player_tracker_id": 12,
+        "jersey_number": 34
+      },
+      "clip_url": "/api/v1/clipper/download/single/evt_006_robo"
+    },
+    {
+      "event_id": "evt_007_perdida",
+      "type": "PERDIDA",
+      "timestamp": 918.99,
+      "frame_index": 55139,
+      "confidence": 0.99,
+      "actors": {
+        "team_id": "Team_A",
+        "player_tracker_id": 11,
+        "jersey_number": 36
+      },
+      "clip_url": "/api/v1/clipper/download/single/evt_007_perdida"
+    },
+    {
+      "event_id": "evt_008_tiro",
+      "type": "TIRO",
+      "timestamp": 933.46,
+      "frame_index": 56007,
+      "confidence": 0.96,
+      "actors": {
+        "team_id": "Team_B",
+        "player_tracker_id": 5,
+        "jersey_number": 64
+      },
+      "clip_url": "/api/v1/clipper/download/single/evt_008_tiro"
+    },
+    {
+      "event_id": "evt_009_tiro",
+      "type": "TIRO",
+      "timestamp": 956.39,
+      "frame_index": 57383,
+      "confidence": 0.88,
+      "actors": {
+        "team_id": "Team_B",
+        "player_tracker_id": 5,
+        "jersey_number": 11
+      },
+      "clip_url": "/api/v1/clipper/download/single/evt_009_tiro"
+    },
+    {
+      "event_id": "evt_010_tiro",
+      "type": "TIRO",
+      "timestamp": 1047.25,
+      "frame_index": 62835,
+      "confidence": 0.97,
+      "actors": {
+        "team_id": "Team_B",
+        "player_tracker_id": 14,
+        "jersey_number": null
+      },
+      "clip_url": "/api/v1/clipper/download/single/evt_010_tiro"
+    },
+    {
+      "event_id": "evt_011_tiro",
+      "type": "TIRO",
+      "timestamp": 1209.39,
+      "frame_index": 72563,
+      "confidence": 0.93,
+      "actors": {
+        "team_id": "Team_B",
+        "player_tracker_id": 5,
+        "jersey_number": null
+      },
+      "clip_url": "/api/v1/clipper/download/single/evt_011_tiro"
+    },
+    {
+      "event_id": "evt_012_gol",
+      "type": "GOL",
+      "timestamp": 1273.91,
+      "frame_index": 76434,
+      "confidence": 0.76,
+      "actors": {
+        "team_id": "Team_B",
+        "player_tracker_id": 14,
+        "jersey_number": 55
+      },
+      "clip_url": "/api/v1/clipper/download/single/evt_012_gol"
+    },
+    {
+      "event_id": "evt_013_tiro",
+      "type": "TIRO",
+      "timestamp": 1374.82,
+      "frame_index": 82489,
+      "confidence": 0.95,
+      "actors": {
+        "team_id": "Team_A",
+        "player_tracker_id": 14,
+        "jersey_number": 61
+      },
+      "clip_url": "/api/v1/clipper/download/single/evt_013_tiro"
+    },
+    {
+      "event_id": "evt_014_tiro",
+      "type": "TIRO",
+      "timestamp": 1439.78,
+      "frame_index": 86386,
+      "confidence": 0.88,
+      "actors": {
+        "team_id": "Team_A",
+        "player_tracker_id": 12,
+        "jersey_number": 30
+      },
+      "clip_url": "/api/v1/clipper/download/single/evt_014_tiro"
+    },
+    {
+      "event_id": "evt_015_perdida",
+      "type": "PERDIDA",
+      "timestamp": 1465.97,
+      "frame_index": 87957,
+      "confidence": 0.98,
+      "actors": {
+        "team_id": "Team_B",
+        "player_tracker_id": 10,
+        "jersey_number": null
+      },
+      "clip_url": "/api/v1/clipper/download/single/evt_015_perdida"
+    },
+    {
+      "event_id": "evt_016_tiro",
+      "type": "TIRO",
+      "timestamp": 1469.57,
+      "frame_index": 88174,
+      "confidence": 0.93,
+      "actors": {
+        "team_id": "Team_A",
+        "player_tracker_id": 10,
+        "jersey_number": 85
+      },
+      "clip_url": "/api/v1/clipper/download/single/evt_016_tiro"
+    },
+    {
+      "event_id": "evt_017_tiro",
+      "type": "TIRO",
+      "timestamp": 1587.89,
+      "frame_index": 95273,
+      "confidence": 0.79,
+      "actors": {
+        "team_id": "Team_A",
+        "player_tracker_id": 8,
+        "jersey_number": null
+      },
+      "clip_url": "/api/v1/clipper/download/single/evt_017_tiro"
+    },
+    {
+      "event_id": "evt_018_parada",
+      "type": "PARADA",
+      "timestamp": 1692.34,
+      "frame_index": 101540,
+      "confidence": 0.94,
+      "actors": {
+        "team_id": "Team_B",
+        "player_tracker_id": 12,
+        "jersey_number": null
+      },
+      "clip_url": "/api/v1/clipper/download/single/evt_018_parada"
+    },
+    {
+      "event_id": "evt_019_perdida",
+      "type": "PERDIDA",
+      "timestamp": 1721.9,
+      "frame_index": 103313,
+      "confidence": 0.88,
+      "actors": {
+        "team_id": "Team_B",
+        "player_tracker_id": 9,
+        "jersey_number": 55
+      },
+      "clip_url": "/api/v1/clipper/download/single/evt_019_perdida"
+    },
+    {
+      "event_id": "evt_020_perdida",
+      "type": "PERDIDA",
+      "timestamp": 1904.64,
+      "frame_index": 114278,
+      "confidence": 0.86,
+      "actors": {
+        "team_id": "Team_A",
+        "player_tracker_id": 13,
+        "jersey_number": 75
+      },
+      "clip_url": "/api/v1/clipper/download/single/evt_020_perdida"
+    },
+    {
+      "event_id": "evt_021_falta",
+      "type": "FALTA",
+      "timestamp": 1949.82,
+      "frame_index": 116989,
+      "confidence": 0.95,
+      "actors": {
+        "team_id": "Team_B",
+        "player_tracker_id": 7,
+        "jersey_number": 26
+      },
+      "clip_url": "/api/v1/clipper/download/single/evt_021_falta"
+    },
+    {
+      "event_id": "evt_022_tiro",
+      "type": "TIRO",
+      "timestamp": 2115.15,
+      "frame_index": 126908,
+      "confidence": 0.76,
+      "actors": {
+        "team_id": "Team_B",
+        "player_tracker_id": 13,
+        "jersey_number": null
+      },
+      "clip_url": "/api/v1/clipper/download/single/evt_022_tiro"
+    },
+    {
+      "event_id": "evt_023_tiro",
+      "type": "TIRO",
+      "timestamp": 2154.64,
+      "frame_index": 129278,
+      "confidence": 0.85,
+      "actors": {
+        "team_id": "Team_A",
+        "player_tracker_id": 8,
+        "jersey_number": null
+      },
+      "clip_url": "/api/v1/clipper/download/single/evt_023_tiro"
+    }
+  ]
+}

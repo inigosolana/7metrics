@@ -1,0 +1,21 @@
+{
+  "job_id": "job_6a47b1d8592e",
+  "mode": "clipper",
+  "video_id": "ebe27194-ba7c-4fb0-9f33-7878a752bbea",
+  "status": "COMPLETED",
+  "progress_percentage": 100,
+  "current_step": "Processing complete!",
+  "created_at": "2026-01-26T18:20:19.755652",
+  "updated_at": "2026-01-26T18:20:34.463199",
+  "error": null,
+  "config": {
+    "include_actions": [
+      "GOL"
+    ],
+    "padding_seconds": {
+      "pre": 5,
+      "post": 3
+    },
+    "export_format": "mp4"
+  }
+}
