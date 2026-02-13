@@ -31,14 +31,17 @@ export const ClipEditor: React.FC = () => {
                     (backendProgress, msg) => {
                         setProgress(backendProgress);
                         if (msg) setProgressMsg(msg);
+                    },
+                    (liveClips) => {
+                        // Live update clips!
+                        setClips(liveClips);
+                        if (status !== 'READY') setStatus('READY');
                     }
                 );
 
                 setProgress(100);
-                setTimeout(() => {
-                    setClips(processedClips);
-                    setStatus('READY');
-                }, 500);
+                setClips(processedClips);
+                setStatus('READY');
             } catch (error) {
                 console.error("Processing failed", error);
                 setStatus('IDLE');
@@ -149,7 +152,7 @@ export const ClipEditor: React.FC = () => {
                 </div>
             )}
 
-            {status === 'PROCESSING' && (
+            {status === 'PROCESSING' && clips.length === 0 && (
                 <div className="flex-1 glass-panel p-12 rounded-2xl flex flex-col items-center justify-center">
                     <div className="w-full max-w-md space-y-4">
                         <div className="flex justify-between text-sm font-bold">
@@ -167,176 +170,191 @@ export const ClipEditor: React.FC = () => {
                 </div>
             )}
 
-            {status === 'READY' && (
-                <div className="flex-1 flex gap-6 min-h-0">
-                    {/* Sidebar Filters */}
-                    <div className="w-72 flex-shrink-0 glass-panel p-4 rounded-xl overflow-y-auto flex flex-col gap-6">
-                        <div>
-                            <h3 className="text-xs font-bold text-[#cbad90] uppercase tracking-widest mb-3">Team Filter</h3>
-                            <div className="flex p-1 bg-black/40 rounded-lg">
-                                {['ALL', 'HOME', 'AWAY'].map(t => (
-                                    <button
-                                        key={t}
-                                        onClick={() => setSelectedTeam(t as any)}
-                                        className={`flex-1 py-1.5 text-xs font-bold rounded ${selectedTeam === t ? 'bg-primary text-white shadow' : 'text-white/40 hover:text-white'}`}
-                                    >
-                                        {t}
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-
-                        <div>
-                            <h3 className="text-xs font-bold text-[#cbad90] uppercase tracking-widest mb-3">Player</h3>
-                            <select
-                                value={selectedPlayer}
-                                onChange={(e) => setSelectedPlayer(e.target.value)}
-                                className="w-full bg-black/40 border border-white/10 text-white text-xs rounded-lg p-2.5 outline-none focus:border-primary"
-                            >
-                                <option value="ALL">All Players</option>
-                                {Array.from(new Set(clips.map(c => c.player))).sort().map(player => (
-                                    <option key={player} value={player}>{player}</option>
-                                ))}
-                            </select>
-                        </div>
-
-                        <div>
-                            <div className="flex justify-between items-center mb-3">
-                                <h3 className="text-xs font-bold text-[#cbad90] uppercase tracking-widest">Action Type</h3>
-                                <button onClick={() => setSelectedActions([])} className="text-[10px] text-white/40 hover:text-white">Clear</button>
-                            </div>
-                            <div className="space-y-2">
-                                {['GOAL', 'POST', 'MISS', 'TURNOVER', 'STEAL', 'STEPS', 'DOUBLE_DRIBBLE', 'FOUL'].map(action => (
-                                    <label key={action} className="flex items-center gap-2 cursor-pointer group">
-                                        <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${selectedActions.includes(action) ? 'bg-primary border-primary' : 'border-white/20 bg-transparent'}`}>
-                                            {selectedActions.includes(action) && <span className="material-symbols-outlined text-white text-[10px]">check</span>}
-                                        </div>
-                                        <input type="checkbox" className="hidden" checked={selectedActions.includes(action)} onChange={() => toggleAction(action)} />
-                                        <span className={`text-xs ${selectedActions.includes(action) ? 'text-white' : 'text-white/50 group-hover:text-white'}`}>{action.replace('_', ' ')}</span>
-                                    </label>
-                                ))}
-                            </div>
-                        </div>
-
-                        <div className="mt-auto pt-4 border-t border-white/10">
-                            <button
-                                onClick={handleBatchDownload}
-                                className="w-full bg-primary hover:bg-primary/80 text-white py-3 rounded-lg text-sm font-bold flex items-center justify-center gap-2 shadow-lg shadow-primary/20 active:scale-95 transition-all"
-                            >
-                                <span className="material-symbols-outlined text-lg">download</span>
-                                Export ({filteredClips.length})
-                            </button>
-                        </div>
-                    </div>
-
-                    {/* Results Grid */}
-                    <div className="flex-1 glass-panel p-4 rounded-xl overflow-hidden flex flex-col">
-                        <div className="flex justify-between items-center mb-4 pb-2 border-b border-white/5">
-                            <h3 className="font-bold text-white">{filteredClips.length} Clips Found</h3>
-                            <div className="flex gap-2">
-                                <span className="text-xs text-white/40">Sort by:</span>
-                                <span className="text-xs font-bold text-white cursor-pointer">Time</span>
-                            </div>
-                        </div>
-
-                        <div className="flex-1 overflow-y-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 content-start pr-2">
-                            {filteredClips.map((clip) => (
-                                <div key={clip.id} className="bg-black/40 rounded-lg overflow-hidden border border-white/5 group hover:border-primary/50 transition-all">
-                                    <div className="relative aspect-video bg-black">
-                                        <img src={clip.thumbnailUrl} className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" />
-                                        <div className="absolute top-2 right-2 bg-black/80 text-white text-[10px] font-mono px-1.5 py-0.5 rounded">
-                                            {clip.duration}
-                                        </div>
-                                        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/40 cursor-pointer" onClick={() => handleClipAnalysis(clip)}>
-                                            <span className="material-symbols-outlined text-4xl text-white">play_circle</span>
-                                        </div>
-                                    </div>
-                                    <div className="p-3">
-                                        <div className="flex justify-between items-start mb-2">
-                                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${getActionColor(clip.actionType)}`}>
-                                                {clip.actionType.replace('_', ' ')}
-                                            </span>
-                                            <span className="text-[10px] text-white/40 font-mono">{clip.startTime}</span>
-                                        </div>
-                                        <h4 className="text-sm font-bold text-white truncate">{clip.player}</h4>
-                                        <div className="flex justify-between items-center mt-3">
-                                            <button
-                                                onClick={() => handleClipAnalysis(clip)}
-                                                className="text-[10px] font-bold text-primary hover:text-white transition-colors flex items-center gap-1"
-                                            >
-                                                <span className="material-symbols-outlined text-xs">analytics</span>
-                                                AI ANALYSIS
-                                            </button>
-                                            <button
-                                                onClick={() => handleDownload(clip)}
-                                                className="text-white/40 hover:text-white hover:bg-white/10 p-1.5 rounded transition-colors"
-                                            >
-                                                <span className="material-symbols-outlined text-lg">download</span>
-                                            </button>
-                                        </div>
-                                    </div>
+            {(status === 'READY' || (status === 'PROCESSING' && clips.length > 0)) && (
+                <div className="flex-1 flex flex-col gap-6 min-h-0">
+                    {status === 'PROCESSING' && (
+                        <div className="glass-panel p-4 rounded-xl border-l-4 border-l-primary bg-primary/5 flex items-center justify-between">
+                            <div className="flex items-center gap-4 flex-1">
+                                <div className="w-48 bg-white/10 h-1.5 rounded-full overflow-hidden">
+                                    <div className="bg-primary h-full transition-all duration-200" style={{ width: `${progress}%` }}></div>
                                 </div>
-                            ))}
-                        </div>
-                    </div>
-
-                    {/* Analysis Modal Side Overlay */}
-                    {selectedClip && (
-                        <div className="w-96 flex-shrink-0 glass-panel border-l border-white/20 flex flex-col animate-slide-in-right">
-                            <div className="p-4 border-b border-white/10 flex justify-between items-center bg-primary/10">
-                                <h3 className="font-bold text-white flex items-center gap-2">
-                                    <span className="material-symbols-outlined text-primary">smart_toy</span>
-                                    Tactical Detail
-                                </h3>
-                                <button onClick={() => setSelectedClip(null)} className="text-white/40 hover:text-white">
-                                    <span className="material-symbols-outlined">close</span>
-                                </button>
+                                <span className="text-[10px] font-bold text-white/60 uppercase">{progressMsg}</span>
                             </div>
-                            <div className="p-6 overflow-y-auto space-y-6">
-                                <div className="aspect-video rounded-lg overflow-hidden border border-white/10 bg-black">
-                                    <img src={selectedClip.thumbnailUrl} className="w-full h-full object-cover" />
-                                </div>
-                                <div className="space-y-1">
-                                    <p className="text-[10px] text-[#cbad90] font-bold uppercase tracking-widest">Metadata</p>
-                                    <div className="grid grid-cols-2 gap-2">
-                                        <div className="bg-white/5 p-2 rounded border border-white/5">
-                                            <p className="text-[8px] text-white/40 uppercase">Action</p>
-                                            <p className="text-xs font-bold text-white">{selectedClip.actionType}</p>
-                                        </div>
-                                        <div className="bg-white/5 p-2 rounded border border-white/5">
-                                            <p className="text-[8px] text-white/40 uppercase">Timestamp</p>
-                                            <p className="text-xs font-bold text-white font-mono">{selectedClip.startTime}</p>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div className="space-y-3">
-                                    <p className="text-[10px] text-[#cbad90] font-bold uppercase tracking-widest flex items-center gap-2">
-                                        Coach AI Insight
-                                        {isAnalyzing && <span className="w-1.5 h-1.5 rounded-full bg-primary animate-ping"></span>}
-                                    </p>
-                                    <div className="bg-white/5 p-4 rounded-xl border border-white/10 relative overflow-hidden">
-                                        {isAnalyzing ? (
-                                            <div className="space-y-2 py-4">
-                                                <div className="h-3 w-3/4 bg-white/10 rounded animate-pulse"></div>
-                                                <div className="h-3 w-full bg-white/10 rounded animate-pulse"></div>
-                                                <div className="h-3 w-5/6 bg-white/10 rounded animate-pulse"></div>
-                                            </div>
-                                        ) : (
-                                            <p className="text-xs text-white/70 leading-relaxed italic">
-                                                "{analysis}"
-                                            </p>
-                                        )}
-                                        <div className="absolute top-0 right-0 p-2 opacity-10">
-                                            <span className="material-symbols-outlined text-4xl">format_quote</span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
+                            <span className="text-[10px] font-mono text-primary animate-pulse flex items-center gap-2">
+                                <span className="w-1.5 h-1.5 rounded-full bg-primary animate-ping"></span>
+                                IA DETECTANDO CLIPS EN TIEMPO REAL...
+                            </span>
                         </div>
                     )}
-                </div>
+                    <div className="flex-1 flex gap-6 min-h-0">
+                        {/* Sidebar Filters */}
+                        <div className="w-72 flex-shrink-0 glass-panel p-4 rounded-xl overflow-y-auto flex flex-col gap-6">
+                            <div>
+                                <h3 className="text-xs font-bold text-[#cbad90] uppercase tracking-widest mb-3">Team Filter</h3>
+                                <div className="flex p-1 bg-black/40 rounded-lg">
+                                    {['ALL', 'HOME', 'AWAY'].map(t => (
+                                        <button
+                                            key={t}
+                                            onClick={() => setSelectedTeam(t as any)}
+                                            className={`flex-1 py-1.5 text-xs font-bold rounded ${selectedTeam === t ? 'bg-primary text-white shadow' : 'text-white/40 hover:text-white'}`}
+                                        >
+                                            {t}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div>
+                                <h3 className="text-xs font-bold text-[#cbad90] uppercase tracking-widest mb-3">Player</h3>
+                                <select
+                                    value={selectedPlayer}
+                                    onChange={(e) => setSelectedPlayer(e.target.value)}
+                                    className="w-full bg-black/40 border border-white/10 text-white text-xs rounded-lg p-2.5 outline-none focus:border-primary"
+                                >
+                                    <option value="ALL">All Players</option>
+                                    {Array.from(new Set(clips.map(c => c.player))).sort().map(player => (
+                                        <option key={player} value={player}>{player}</option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            <div>
+                                <div className="flex justify-between items-center mb-3">
+                                    <h3 className="text-xs font-bold text-[#cbad90] uppercase tracking-widest">Action Type</h3>
+                                    <button onClick={() => setSelectedActions([])} className="text-[10px] text-white/40 hover:text-white">Clear</button>
+                                </div>
+                                <div className="space-y-2">
+                                    {['GOAL', 'POST', 'MISS', 'TURNOVER', 'STEAL', 'STEPS', 'DOUBLE_DRIBBLE', 'FOUL'].map(action => (
+                                        <label key={action} className="flex items-center gap-2 cursor-pointer group">
+                                            <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${selectedActions.includes(action) ? 'bg-primary border-primary' : 'border-white/20 bg-transparent'}`}>
+                                                {selectedActions.includes(action) && <span className="material-symbols-outlined text-white text-[10px]">check</span>}
+                                            </div>
+                                            <input type="checkbox" className="hidden" checked={selectedActions.includes(action)} onChange={() => toggleAction(action)} />
+                                            <span className={`text-xs ${selectedActions.includes(action) ? 'text-white' : 'text-white/50 group-hover:text-white'}`}>{action.replace('_', ' ')}</span>
+                                        </label>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div className="mt-auto pt-4 border-t border-white/10">
+                                <button
+                                    onClick={handleBatchDownload}
+                                    className="w-full bg-primary hover:bg-primary/80 text-white py-3 rounded-lg text-sm font-bold flex items-center justify-center gap-2 shadow-lg shadow-primary/20 active:scale-95 transition-all"
+                                >
+                                    <span className="material-symbols-outlined text-lg">download</span>
+                                    Export ({filteredClips.length})
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Results Grid */}
+                        <div className="flex-1 glass-panel p-4 rounded-xl overflow-hidden flex flex-col">
+                            <div className="flex justify-between items-center mb-4 pb-2 border-b border-white/5">
+                                <h3 className="font-bold text-white">{filteredClips.length} Clips Found</h3>
+                                <div className="flex gap-2">
+                                    <span className="text-xs text-white/40">Sort by:</span>
+                                    <span className="text-xs font-bold text-white cursor-pointer">Time</span>
+                                </div>
+                            </div>
+
+                            <div className="flex-1 overflow-y-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 content-start pr-2">
+                                {filteredClips.map((clip) => (
+                                    <div key={clip.id} className="bg-black/40 rounded-lg overflow-hidden border border-white/5 group hover:border-primary/50 transition-all">
+                                        <div className="relative aspect-video bg-black">
+                                            <img src={clip.thumbnailUrl} className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" />
+                                            <div className="absolute top-2 right-2 bg-black/80 text-white text-[10px] font-mono px-1.5 py-0.5 rounded">
+                                                {clip.duration}
+                                            </div>
+                                            <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/40 cursor-pointer" onClick={() => handleClipAnalysis(clip)}>
+                                                <span className="material-symbols-outlined text-4xl text-white">play_circle</span>
+                                            </div>
+                                        </div>
+                                        <div className="p-3">
+                                            <div className="flex justify-between items-start mb-2">
+                                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${getActionColor(clip.actionType)}`}>
+                                                    {clip.actionType.replace('_', ' ')}
+                                                </span>
+                                                <span className="text-[10px] text-white/40 font-mono">{clip.startTime}</span>
+                                            </div>
+                                            <h4 className="text-sm font-bold text-white truncate">{clip.player}</h4>
+                                            <div className="flex justify-between items-center mt-3">
+                                                <button
+                                                    onClick={() => handleClipAnalysis(clip)}
+                                                    className="text-[10px] font-bold text-primary hover:text-white transition-colors flex items-center gap-1"
+                                                >
+                                                    <span className="material-symbols-outlined text-xs">analytics</span>
+                                                    AI ANALYSIS
+                                                </button>
+                                                <button
+                                                    onClick={() => handleDownload(clip)}
+                                                    className="text-white/40 hover:text-white hover:bg-white/10 p-1.5 rounded transition-colors"
+                                                >
+                                                    <span className="material-symbols-outlined text-lg">download</span>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Analysis Modal Side Overlay */}
+                        {selectedClip && (
+                            <div className="w-96 flex-shrink-0 glass-panel border-l border-white/20 flex flex-col animate-slide-in-right">
+                                <div className="p-4 border-b border-white/10 flex justify-between items-center bg-primary/10">
+                                    <h3 className="font-bold text-white flex items-center gap-2">
+                                        <span className="material-symbols-outlined text-primary">smart_toy</span>
+                                        Tactical Detail
+                                    </h3>
+                                    <button onClick={() => setSelectedClip(null)} className="text-white/40 hover:text-white">
+                                        <span className="material-symbols-outlined">close</span>
+                                    </button>
+                                </div>
+                                <div className="p-6 overflow-y-auto space-y-6">
+                                    <div className="aspect-video rounded-lg overflow-hidden border border-white/10 bg-black">
+                                        <img src={selectedClip.thumbnailUrl} className="w-full h-full object-cover" />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <p className="text-[10px] text-[#cbad90] font-bold uppercase tracking-widest">Metadata</p>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <div className="bg-white/5 p-2 rounded border border-white/5">
+                                                <p className="text-[8px] text-white/40 uppercase">Action</p>
+                                                <p className="text-xs font-bold text-white">{selectedClip.actionType}</p>
+                                            </div>
+                                            <div className="bg-white/5 p-2 rounded border border-white/5">
+                                                <p className="text-[8px] text-white/40 uppercase">Timestamp</p>
+                                                <p className="text-xs font-bold text-white font-mono">{selectedClip.startTime}</p>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-3">
+                                        <p className="text-[10px] text-[#cbad90] font-bold uppercase tracking-widest flex items-center gap-2">
+                                            Coach AI Insight
+                                            {isAnalyzing && <span className="w-1.5 h-1.5 rounded-full bg-primary animate-ping"></span>}
+                                        </p>
+                                        <div className="bg-white/5 p-4 rounded-xl border border-white/10 relative overflow-hidden">
+                                            {isAnalyzing ? (
+                                                <div className="space-y-2 py-4">
+                                                    <div className="h-3 w-3/4 bg-white/10 rounded animate-pulse"></div>
+                                                    <div className="h-3 w-full bg-white/10 rounded animate-pulse"></div>
+                                                    <div className="h-3 w-5/6 bg-white/10 rounded animate-pulse"></div>
+                                                </div>
+                                            ) : (
+                                                <p className="text-xs text-white/70 leading-relaxed italic">
+                                                    "{analysis}"
+                                                </p>
+                                            )}
+                                            <div className="absolute top-0 right-0 p-2 opacity-10">
+                                                <span className="material-symbols-outlined text-4xl">format_quote</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
             )}
-        </div>
-    );
+                </div>
+            );
 };
