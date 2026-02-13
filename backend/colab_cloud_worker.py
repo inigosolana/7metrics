@@ -133,11 +133,13 @@ class HandballProcessor:
         self.training_crops = []
         
         # Sistema de Votos para Posesión
-        self.possession_votes = Counter() # Cuenta frames que cada jugador tiene el balón
+        self.possession_votes = Counter()
         self.current_team_votes = Counter()
+        self.attack_cooldown = 0 # Para evitar jitter (histeresis)
 
     def export_segment_async(self, start, end, team, player):
-        """Lanza la exportación en un hilo aparte para no frenar la detección"""
+        # Evitar clips extremadamente cortos (menos de 2 segundos de acción real)
+        if (end - start) < 3: return 
         threading.Thread(target=self._export_ffmpeg, args=(start, end, team, player)).start()
 
     def _export_ffmpeg(self, start, end, team, player):
@@ -146,13 +148,12 @@ class HandballProcessor:
         os.makedirs(folder, exist_ok=True)
         output_file = os.path.join(folder, f"{timestamp}s.mp4")
         
-        # OPTIMIZACIÓN CRÍTICA: -ss ANTES de -i para input seeking (instantáneo)
         cmd = [
             'ffmpeg', '-y', 
-            '-ss', str(start), 
-            '-to', str(end),
+            '-ss', f"{start:.2f}", 
+            '-to', f"{end:.2f}",
             '-i', self.input_path, 
-            '-c', 'copy', # Copia directa sin recodificar
+            '-c', 'copy', 
             '-loglevel', 'error', 
             output_file
         ]
@@ -161,43 +162,37 @@ class HandballProcessor:
 
     def process(self):
         cap = cv2.VideoCapture(self.input_path)
-        fps = cap.get(cv2.CAP_PROP_FPS)
+        fps = cap.get(cv2.CAP_PROP_FPS) or 30
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         h_orig = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         
-        # CONFIGURACIÓN TÁCTICA
-        STRIDE = 2 # Velocidad 2x (procesa 1 de cada 2 frames)
-        LEAD_IN = 8 # Segundos antes de la acción (inicio jugada)
-        LEAD_OUT = 3 # Segundos después
+        STRIDE = 2 
+        LEAD_IN = 8 
+        LEAD_OUT = 3
+        COOLDOWN_FRAMES = int(fps * 1.5) # 1.5 segundos de "paz" para cerrar el ataque
         
-        # Zonas de 9m (Aprox 25% del campo a cada lado)
         zona_izq = w * 0.25
         zona_der = w * 0.75
         
         frame_idx = 0
         start_time = time.time()
         
-        print(f"🚀 Iniciando análisis a {fps} FPS (Stride: {STRIDE})...")
+        print(f"🚀 Iniciando análisis a {fps:.1f} FPS (Stride: {STRIDE})...")
 
         while cap.isOpened():
             ret, frame = cap.read()
             if not ret: break
 
-            # Salto de frames para velocidad
             if frame_idx % STRIDE != 0:
                 frame_idx += 1
                 continue
 
             current_time = frame_idx / fps
-            
-            # Redimensión para inferencia (640px es estándar YOLO)
             small_frame = cv2.resize(frame, (640, 384))
             scale_x = w / 640
             scale_y = h_orig / 384
 
-            # Inferencia (detecta Personas y Balón)
-            # Clases tesis: 0=Jugador, 1=Arbitro, 2=Balon (ajustar si difiere)
             results = self.model.track(small_frame, persist=True, verbose=False, imgsz=640, tracker="bytetrack.yaml", conf=0.25)
             res = results[0]
             
@@ -212,39 +207,29 @@ class HandballProcessor:
                 for i in range(len(boxes)):
                     c = int(cls[i])
                     box = boxes[i]
-                    
-                    # Coordenadas reales
                     x1, y1, x2, y2 = int(box[0]*scale_x), int(box[1]*scale_y), int(box[2]*scale_x), int(box[3]*scale_y)
                     
-                    # Filtros de clase (Asumiendo 0=Jugador, 2=Balón para el modelo best.pt)
-                    # Si tu modelo usa otras clases, ajusta estos números
                     is_ball = (c == 2) or (res.names[c] in ['ball', 'sports ball'])
                     is_player = (c == 0) or (res.names[c] in ['person', 'player'])
 
                     if is_ball:
                         ball_pos = ((x1+x2)/2, (y1+y2)/2)
                     elif is_player and i < len(ids):
-                        pid = ids[i]
-                        players.append({'id': pid, 'box': [x1, y1, x2, y2]})
-                        
-                        # Recolectar datos para colores (solo primeros 60 seg)
+                        players.append({'id': ids[i], 'box': [x1, y1, x2, y2]})
                         if not self.team_clf.trained and current_time < 60:
                             if len(self.training_crops) < 200:
                                 crop = frame[max(0,y1):min(y2,h_orig), max(0,x1):min(x2,w)]
                                 if crop.size > 0: self.training_crops.append(crop)
 
-                # Entrenar clasificador de equipos al minuto 1
                 if len(self.training_crops) >= 50 and not self.team_clf.trained:
                     self.team_clf.train(self.training_crops)
 
-            # LÓGICA DE JUEGO (STATE MACHINE)
             if ball_pos:
                 bx, _ = ball_pos
                 in_danger_zone = (bx < zona_izq) or (bx > zona_der)
                 
-                # Asignación de Posesión (Votación)
                 closest_p = None
-                min_d = 200
+                min_d = 250 # Aumentado a 250px para capturar mejor la posesión
                 for p in players:
                     px = (p['box'][0] + p['box'][2]) / 2
                     py = (p['box'][1] + p['box'][3]) / 2
@@ -254,9 +239,7 @@ class HandballProcessor:
                         closest_p = p
                 
                 if closest_p:
-                    # Votar por este jugador
                     self.possession_votes[closest_p['id']] += 1
-                    # Votar por su equipo (si ya está entrenado)
                     if self.team_clf.trained:
                         pb = closest_p['box']
                         crop = frame[pb[1]:pb[3], pb[0]:pb[2]]
@@ -264,40 +247,32 @@ class HandballProcessor:
                             tm = self.team_clf.predict(crop)
                             self.current_team_votes[tm] += 1
 
-                # Máquina de Estados: INICIO ATAQUE
-                if in_danger_zone and not self.in_attack:
-                    self.in_attack = True
-                    # Lead-in: Empezar a grabar desde X segundos antes
-                    self.attack_start_time = max(0, current_time - LEAD_IN)
-                    # Resetear votos para este nuevo ataque
-                    self.possession_votes.clear()
-                    self.current_team_votes.clear()
-                    print(f"⚔️ Ataque iniciado en {int(current_time)}s")
+                if in_danger_zone:
+                    self.attack_cooldown = 0 # Reset cooldown si sigue habiendo peligro
+                    if not self.in_attack:
+                        self.in_attack = True
+                        self.attack_start_time = max(0, current_time - LEAD_IN)
+                        self.possession_votes.clear()
+                        self.current_team_votes.clear()
+                        print(f"⚔️ Ataque iniciado en {int(current_time)}s")
+                
+                elif self.in_attack:
+                    # Aplicar histeresis: no cerrar hasta que pase el COOLDOWN
+                    self.attack_cooldown += STRIDE
+                    if self.attack_cooldown > COOLDOWN_FRAMES:
+                        # Determinar ganador de la jugada
+                        winner_player = f"P-{self.possession_votes.most_common(1)[0][0]}" if self.possession_votes else "Desconocido"
+                        winner_team = self.current_team_votes.most_common(1)[0][0] if self.current_team_votes else "Sin_Equipo"
 
-                # Máquina de Estados: FIN ATAQUE
-                elif not in_danger_zone and self.in_attack:
-                    # Determinar ganador de la jugada (quien tuvo más el balón)
-                    if self.possession_votes:
-                        winner_id = self.possession_votes.most_common(1)[0][0]
-                        winner_player = f"Jugador_{winner_id}"
-                    else:
-                        winner_player = "Desconocido"
-                        
-                    if self.current_team_votes:
-                        winner_team = self.current_team_votes.most_common(1)[0][0]
-                    else:
-                        winner_team = "Sin_Equipo"
+                        self.export_segment_async(
+                            self.attack_start_time, 
+                            current_time + LEAD_OUT, 
+                            winner_team, 
+                            winner_player
+                        )
+                        self.in_attack = False
+                        self.attack_cooldown = 0
 
-                    # Exportar clip
-                    self.export_segment_async(
-                        self.attack_start_time, 
-                        current_time + LEAD_OUT, 
-                        winner_team, 
-                        winner_player
-                    )
-                    self.in_attack = False
-
-            # Actualizar Progreso UI
             frame_idx += 1
             if frame_idx % 100 == 0:
                 elapsed = time.time() - start_time
