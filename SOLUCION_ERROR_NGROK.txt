@@ -1,0 +1,8 @@
+[INSTRUCCIONES FINALES]
+El error que te salió ("ERR_NGROK_334") es porque tienes OTRA pestaña de Colab abierta corriendo lo mismo.
+
+1. **CIERRA todas las pestañas de Colab** excepto una.
+2. En la que te quedes, vete al menú **"Entorno de ejecución" -> "Desconectar y eliminar entorno de ejecución"**.
+3. Ahora sí, copia el código nuevo de `backend/colab_cloud_worker.py` y pégalo.
+
+Este código nuevo incluye un comando explícito para MATAR cualquier conexión fantasma.

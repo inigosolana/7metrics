@@ -1,0 +1,10 @@
+PASO FINAL (IMPRESCINDIBLE):
+
+1. **Abre el Colab** que te acabo de lanzar en el navegador.
+2. Copia todo este código:
+   c:\Users\Iñigo Solana Crespo\Desktop\7metrics\backend\colab_cloud_worker.py
+3. Pégalo en una celda y ejecuta.
+4. Cuando veas la URL (ej: https://xxxx.ngrok-free.app), cópiala aquí:
+   c:\Users\Iñigo Solana Crespo\Desktop\7metrics\.env.local
+
+¡Hecho esto, la web funcionará automáticamente!
