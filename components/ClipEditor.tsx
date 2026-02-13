@@ -103,7 +103,7 @@ export const ClipEditor: React.FC = () => {
     };
 
     const handleBatchDownload = () => {
-        alert(`Downloading ${filteredClips.length} clips... En producción esto generaría un ZIP en el servidor.`);
+        alert(`Downloading ${filteredClips.length} clips... En producciÃ³n esto generarÃ­a un ZIP en el servidor.`);
         filteredClips.forEach((clip, index) => {
             setTimeout(() => handleDownload(clip), index * 500);
         });
