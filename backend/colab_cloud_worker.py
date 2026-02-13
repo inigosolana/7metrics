@@ -8,10 +8,11 @@ import cv2
 import numpy as np
 import torch
 import threading
+from collections import Counter, deque
 
 # --- 1. INSTALACIÓN DE DEPENDENCIAS ---
 def install_dependencies():
-    print("🚀 Instalando dependencias...")
+    print("🚀 Instalando dependencias de alto rendimiento...")
     try:
         subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", 
             "fastapi", "uvicorn", "python-multipart", "pyngrok", 
@@ -32,6 +33,7 @@ try:
     import nest_asyncio
 except ImportError:
     install_dependencies()
+    # Re-importar tras instalación
     from fastapi import FastAPI, UploadFile, File, BackgroundTasks
     from fastapi.responses import JSONResponse, FileResponse
     from fastapi.middleware.cors import CORSMiddleware
@@ -43,26 +45,39 @@ except ImportError:
 
 nest_asyncio.apply()
 
-# --- 2. MODELO DE LA TESIS (best.pt) ---
-MODEL_PATH = "best.pt"
+# --- 2. GESTIÓN DEL MODELO (Auto-Export a TensorRT) ---
+ORIGINAL_MODEL = "best.pt"
+ENGINE_MODEL = "best.engine"
 
-if not os.path.exists(MODEL_PATH):
-    print(f"⚠️ NO SE ENCUENTRA 'best.pt' en la carpeta actual.")
-    print("👉 Por favor, sube el archivo 'best.pt' a la carpeta de archivos de Colab.")
-    # Fallback por si acaso
-    MODEL_PATH = "yolo11n.pt"
-else:
-    print(f"✅ Modelo 'best.pt' detectado y listo para usar.")
+def load_optimized_model():
+    """Carga TensorRT si existe, o convierte el .pt si hay GPU"""
+    if os.path.exists(ENGINE_MODEL):
+        print(f"⚡ Cargando motor acelerado: {ENGINE_MODEL}")
+        return YOLO(ENGINE_MODEL)
+    
+    if os.path.exists(ORIGINAL_MODEL):
+        print(f"⚠️ Detectado modelo estándar {ORIGINAL_MODEL}")
+        if torch.cuda.is_available():
+            print("🚀 GPU Detectada: Convirtiendo a TensorRT para máxima velocidad (esto tarda 2-3 min una vez)...")
+            try:
+                model = YOLO(ORIGINAL_MODEL)
+                # Exportar a TensorRT (fp16 para mayor velocidad en T4)
+                model.export(format="engine", half=True, imgsz=640, device=0)
+                print("✅ Conversión completada. Cargando motor...")
+                return YOLO(ENGINE_MODEL)
+            except Exception as e:
+                print(f"❌ Falló la optimización ({e}). Usando modelo estándar.")
+                return YOLO(ORIGINAL_MODEL)
+        else:
+            return YOLO(ORIGINAL_MODEL)
+    
+    print("⚠️ No se encontró best.pt. Descargando modelo base YOLOv8n...")
+    return YOLO("yolov8n.pt")
 
 # --- CONFIGURACIÓN ---
-NGROK_AUTH_TOKEN = "38nuec0NauciUj1o70wg29N1xK2_5odXuyQSStGE6tLhuLXdq"
+NGROK_AUTH_TOKEN = "38nuec0NauciUj1o70wg29N1xK2_5odXuyQSStGE6tLhuLXdq" # Tu token
 PORT = 8000
-GLOBAL_STATE = {
-    "progress": 0,
-    "status": "idle",
-    "current_file": "",
-    "eta_seconds": 0
-}
+GLOBAL_STATE = {"progress": 0, "status": "idle", "current_file": "", "eta_seconds": 0}
 
 BASE_DIR = os.getcwd()
 UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
@@ -79,13 +94,14 @@ class TeamClassifier:
         self.trained = False
 
     def train(self, crops):
-        if len(crops) < 10: return
+        if len(crops) < 50: return
         data = []
         for crop in crops:
             try:
                 hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
-                avg = np.mean(hsv[int(hsv.shape[0]*0.3):int(hsv.shape[0]*0.7), 
-                                 int(hsv.shape[1]*0.3):int(hsv.shape[1]*0.7)], axis=(0, 1))
+                # Muestreo del centro de la camiseta para evitar fondo
+                h, w, _ = hsv.shape
+                avg = np.mean(hsv[int(h*0.3):int(h*0.6), int(w*0.3):int(w*0.6)], axis=(0, 1))
                 data.append(avg)
             except: continue
         
@@ -93,14 +109,14 @@ class TeamClassifier:
             self.kmeans = KMeans(n_clusters=2, n_init=10)
             self.kmeans.fit(data)
             self.trained = True
-            print("🎨 Equipos identificados por color.")
+            print("🎨 Equipos identificados automáticamente.")
 
     def predict(self, crop):
         if not self.trained: return "UNKNOWN"
         try:
             hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
-            avg = np.mean(hsv[int(hsv.shape[0]*0.3):int(hsv.shape[0]*0.7), 
-                             int(hsv.shape[1]*0.3):int(hsv.shape[1]*0.7)], axis=(0, 1))
+            h, w, _ = hsv.shape
+            avg = np.mean(hsv[int(h*0.3):int(h*0.6), int(w*0.3):int(w*0.6)], axis=(0, 1))
             label = self.kmeans.predict([avg])[0]
             return "HOME" if label == 0 else "AWAY"
         except: return "UNKNOWN"
@@ -108,27 +124,40 @@ class TeamClassifier:
 class HandballProcessor:
     def __init__(self, input_path):
         self.input_path = input_path
-        # Cargar el modelo descargado
-        print(f"🧠 Cargando modelo: {MODEL_PATH}")
-        self.model = YOLO(MODEL_PATH)
+        self.model = load_optimized_model()
         self.team_clf = TeamClassifier()
+        
+        # Estado del juego
         self.in_attack = False
         self.attack_start_time = 0
         self.training_crops = []
+        
+        # Sistema de Votos para Posesión
+        self.possession_votes = Counter() # Cuenta frames que cada jugador tiene el balón
+        self.current_team_votes = Counter()
 
-    def export_segment(self, start, end, team, player):
+    def export_segment_async(self, start, end, team, player):
+        """Lanza la exportación en un hilo aparte para no frenar la detección"""
+        threading.Thread(target=self._export_ffmpeg, args=(start, end, team, player)).start()
+
+    def _export_ffmpeg(self, start, end, team, player):
         timestamp = int(start)
         folder = os.path.join(OUTPUT_DIR, team, player)
         os.makedirs(folder, exist_ok=True)
-        output_file = os.path.join(folder, f"{timestamp}.mp4")
+        output_file = os.path.join(folder, f"{timestamp}s.mp4")
         
-        # MODO ULTRA-RÁPIDO: -c copy
+        # OPTIMIZACIÓN CRÍTICA: -ss ANTES de -i para input seeking (instantáneo)
         cmd = [
-            'ffmpeg', '-y', '-ss', str(start), '-to', str(end),
-            '-i', self.input_path, '-c', 'copy', '-loglevel', 'error', output_file
+            'ffmpeg', '-y', 
+            '-ss', str(start), 
+            '-to', str(end),
+            '-i', self.input_path, 
+            '-c', 'copy', # Copia directa sin recodificar
+            '-loglevel', 'error', 
+            output_file
         ]
         subprocess.run(cmd)
-        print(f"🎬 Clip guardado: {team}/{player}/{timestamp}.mp4")
+        print(f"🎬 Clip Guardado: {team} | {player} ({timestamp}s)")
 
     def process(self):
         cap = cv2.VideoCapture(self.input_path)
@@ -137,36 +166,38 @@ class HandballProcessor:
         w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         h_orig = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         
-        # Stride equilibrado
-        stride = 2
-        print(f"🚀 Procesando con modelo tesis (Stride={stride})...")
+        # CONFIGURACIÓN TÁCTICA
+        STRIDE = 2 # Velocidad 2x (procesa 1 de cada 2 frames)
+        LEAD_IN = 8 # Segundos antes de la acción (inicio jugada)
+        LEAD_OUT = 3 # Segundos después
         
-        start_time = time.time()
+        # Zonas de 9m (Aprox 25% del campo a cada lado)
+        zona_izq = w * 0.25
+        zona_der = w * 0.75
+        
         frame_idx = 0
+        start_time = time.time()
         
-        # Zonas de ataque (Áreas de 6m y 9m aprox)
-        zona_izq = w * 0.30
-        zona_der = w * 0.70
-        
+        print(f"🚀 Iniciando análisis a {fps} FPS (Stride: {STRIDE})...")
+
         while cap.isOpened():
             ret, frame = cap.read()
             if not ret: break
 
-            if frame_idx % stride != 0:
+            # Salto de frames para velocidad
+            if frame_idx % STRIDE != 0:
                 frame_idx += 1
                 continue
 
             current_time = frame_idx / fps
             
-            # Redimensión para inferencia rápida
+            # Redimensión para inferencia (640px es estándar YOLO)
             small_frame = cv2.resize(frame, (640, 384))
             scale_x = w / 640
             scale_y = h_orig / 384
 
-            # Tracking con persistencia
-            # IMPORTANTE: El modelo de la tesis puede usar clases diferentes. 
-            # Asumimos estándar YOLO: 0=Persona, 32=Balón (o similar si es custom)
-            # Al no saber las clases exactas del .pt, lo dejamos abierto y filtramos por confianza
+            # Inferencia (detecta Personas y Balón)
+            # Clases tesis: 0=Jugador, 1=Arbitro, 2=Balon (ajustar si difiere)
             results = self.model.track(small_frame, persist=True, verbose=False, imgsz=640, tracker="bytetrack.yaml", conf=0.25)
             res = results[0]
             
@@ -183,89 +214,105 @@ class HandballProcessor:
                     box = boxes[i]
                     
                     # Coordenadas reales
-                    x1 = int(box[0] * scale_x)
-                    y1 = int(box[1] * scale_y)
-                    x2 = int(box[2] * scale_x)
-                    y2 = int(box[3] * scale_y)
+                    x1, y1, x2, y2 = int(box[0]*scale_x), int(box[1]*scale_y), int(box[2]*scale_x), int(box[3]*scale_y)
                     
-                    # Ajustar según las clases del modelo de la tesis
-                    # Si es custom, quizás 0=jugador, 1=balón. Si es COCO, 0=persona, 32=balón.
-                    # Probamos lógica genérica: Si es pequeño y en el aire -> Balón
-                    
-                    # (Asumimos COCO por defecto, si el modelo es custom detectará 'ball' en otra clase)
-                    is_ball = (c == 32) or (res.names[c] == 'ball') or (res.names[c] == 'sports ball')
-                    is_player = (c == 0) or (res.names[c] == 'person') or (res.names[c] == 'player')
+                    # Filtros de clase (Asumiendo 0=Jugador, 2=Balón para el modelo best.pt)
+                    # Si tu modelo usa otras clases, ajusta estos números
+                    is_ball = (c == 2) or (res.names[c] in ['ball', 'sports ball'])
+                    is_player = (c == 0) or (res.names[c] in ['person', 'player'])
 
                     if is_ball:
                         ball_pos = ((x1+x2)/2, (y1+y2)/2)
                     elif is_player and i < len(ids):
-                        players.append({'id': ids[i], 'box': [x1, y1, x2, y2]})
+                        pid = ids[i]
+                        players.append({'id': pid, 'box': [x1, y1, x2, y2]})
                         
-                        # Entrenamiento colores
-                        if not self.team_clf.trained and len(self.training_crops) < 50:
-                            crop = frame[max(0,y1):min(y2,h_orig), max(0,x1):min(x2,w)]
-                            if crop.size > 0: self.training_crops.append(crop)
+                        # Recolectar datos para colores (solo primeros 60 seg)
+                        if not self.team_clf.trained and current_time < 60:
+                            if len(self.training_crops) < 200:
+                                crop = frame[max(0,y1):min(y2,h_orig), max(0,x1):min(x2,w)]
+                                if crop.size > 0: self.training_crops.append(crop)
 
+                # Entrenar clasificador de equipos al minuto 1
                 if len(self.training_crops) >= 50 and not self.team_clf.trained:
                     self.team_clf.train(self.training_crops)
 
-            # LÓGICA DE JUEGO
+            # LÓGICA DE JUEGO (STATE MACHINE)
             if ball_pos:
-                bx, by = ball_pos
+                bx, _ = ball_pos
+                in_danger_zone = (bx < zona_izq) or (bx > zona_der)
                 
-                # Asignar posesión
-                closest_player = None
-                min_dist = 200
+                # Asignación de Posesión (Votación)
+                closest_p = None
+                min_d = 200
                 for p in players:
                     px = (p['box'][0] + p['box'][2]) / 2
                     py = (p['box'][1] + p['box'][3]) / 2
-                    dist = np.sqrt((px - bx)**2 + (py - by)**2)
-                    if dist < min_dist:
-                        min_dist = dist
-                        closest_player = p
+                    d = np.sqrt((px-bx)**2 + (py-ball_pos[1])**2)
+                    if d < min_d:
+                        min_d = d
+                        closest_p = p
                 
-                possession_info = {"team": "UNK", "player": "UNK"}
-                if closest_player:
-                    pid = closest_player['id']
-                    possession_info["player"] = f"P-{pid}"
-                    p_box = closest_player['box']
-                    crop = frame[max(0,p_box[1]):min(p_box[3],h_orig), max(0,p_box[0]):min(p_box[2],w)]
-                    if crop.size > 0:
-                        possession_info["team"] = self.team_clf.predict(crop)
+                if closest_p:
+                    # Votar por este jugador
+                    self.possession_votes[closest_p['id']] += 1
+                    # Votar por su equipo (si ya está entrenado)
+                    if self.team_clf.trained:
+                        pb = closest_p['box']
+                        crop = frame[pb[1]:pb[3], pb[0]:pb[2]]
+                        if crop.size > 0:
+                            tm = self.team_clf.predict(crop)
+                            self.current_team_votes[tm] += 1
 
-                # Detección de Ataque (Zonas)
-                in_danger = (bx < zona_izq) or (bx > zona_der)
-                
-                if not self.in_attack and in_danger:
-                    print(f"⚔️ Ataque detectado en {current_time:.1f}s")
+                # Máquina de Estados: INICIO ATAQUE
+                if in_danger_zone and not self.in_attack:
                     self.in_attack = True
-                    self.attack_start_time = max(0, current_time - 5)
-                    self.possession_player = possession_info["player"] # Guardar quién inicia
-                    self.possession_team = possession_info["team"]
+                    # Lead-in: Empezar a grabar desde X segundos antes
+                    self.attack_start_time = max(0, current_time - LEAD_IN)
+                    # Resetear votos para este nuevo ataque
+                    self.possession_votes.clear()
+                    self.current_team_votes.clear()
+                    print(f"⚔️ Ataque iniciado en {int(current_time)}s")
 
-                elif self.in_attack and not in_danger:
-                    print(f"🛑 Fin de ataque en {current_time:.1f}s")
-                    self.export_segment(self.attack_start_time, current_time + 3, 
-                                        self.possession_team or "UNK", 
-                                        self.possession_player or "UNK")
+                # Máquina de Estados: FIN ATAQUE
+                elif not in_danger_zone and self.in_attack:
+                    # Determinar ganador de la jugada (quien tuvo más el balón)
+                    if self.possession_votes:
+                        winner_id = self.possession_votes.most_common(1)[0][0]
+                        winner_player = f"Jugador_{winner_id}"
+                    else:
+                        winner_player = "Desconocido"
+                        
+                    if self.current_team_votes:
+                        winner_team = self.current_team_votes.most_common(1)[0][0]
+                    else:
+                        winner_team = "Sin_Equipo"
+
+                    # Exportar clip
+                    self.export_segment_async(
+                        self.attack_start_time, 
+                        current_time + LEAD_OUT, 
+                        winner_team, 
+                        winner_player
+                    )
                     self.in_attack = False
 
-            # Progreso
+            # Actualizar Progreso UI
             frame_idx += 1
             if frame_idx % 100 == 0:
                 elapsed = time.time() - start_time
                 if elapsed > 0:
-                    prog = (frame_idx / total_frames) * 100
                     fps_proc = frame_idx / elapsed
-                    eta = int((total_frames - frame_idx) / fps_proc)
-                    GLOBAL_STATE["progress"] = prog
+                    eta = int((total_frames - frame_idx) / fps_proc) if fps_proc > 0 else 0
+                    prog = (frame_idx / total_frames) * 100
+                    GLOBAL_STATE["progress"] = round(prog, 1)
                     GLOBAL_STATE["eta_seconds"] = eta
-                    print(f"📊 {prog:.1f}% | ETA: {eta}s")
+                    print(f"📊 {prog:.1f}% | Velocidad: {fps_proc:.1f} FPS | ETA: {eta}s")
 
         cap.release()
         GLOBAL_STATE["status"] = "completed"
         GLOBAL_STATE["progress"] = 100
-        print("✅ Procesamiento completado con modelo Tesis.")
+        print("✅ Procesamiento finalizado.")
 
 # --- 4. API SERVIDOR ---
 
@@ -283,7 +330,7 @@ async def upload(background_tasks: BackgroundTasks, file: UploadFile = File(...)
     GLOBAL_STATE["status"] = "processing"
     GLOBAL_STATE["progress"] = 0
     background_tasks.add_task(run_pipeline, path)
-    return {"status": "started"}
+    return {"status": "started", "filename": file.filename}
 
 @app.get("/clips")
 def list_clips():
@@ -304,25 +351,31 @@ def download(team: str, player: str, filename: str):
     path = os.path.join(OUTPUT_DIR, team, player, filename)
     return FileResponse(path)
 
-# Wrapper para correr el pipeline
 def run_pipeline(path):
-    HandballProcessor(path).process()
+    processor = HandballProcessor(path)
+    processor.process()
 
 if __name__ == "__main__":
+    # Matar ngrok previo si existe
     os.system("pkill ngrok")
     ngrok.set_auth_token(NGROK_AUTH_TOKEN)
-    url = ngrok.connect(PORT).public_url
-    print(f"\n🌍 BACKEND URL: {url}\n")
     
-    def start_server():
-        config = uvicorn.Config(app, host="0.0.0.0", port=PORT, log_level="info")
-        server = uvicorn.Server(config)
-        server.run()
+    # Iniciar túnel
+    try:
+        url = ngrok.connect(PORT).public_url
+        print(f"\n🌍 \033[1;32mURL PÚBLICA (Poner en Frontend): {url}\033[0m \n")
+    except Exception as e:
+        print(f"❌ Error Ngrok: {e}")
 
-    server_thread = threading.Thread(target=start_server, daemon=True)
-    server_thread.start()
+    # Arrancar servidor en hilo aparte para no bloquear Colab
+    def start_server():
+        uvicorn.run(app, host="0.0.0.0", port=PORT, log_level="warning")
+
+    thread = threading.Thread(target=start_server, daemon=True)
+    thread.start()
     
-    print("🚀 Servidor lanzado en segundo plano.")
+    # Mantener vivo
     try:
         while True: time.sleep(1)
-    except KeyboardInterrupt: print("🛑 Deteniendo...")
+    except KeyboardInterrupt:
+        print("🛑 Servidor detenido.")
