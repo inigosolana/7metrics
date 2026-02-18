@@ -14,7 +14,7 @@ export const ClipEditor: React.FC = () => {
     // Filters
     const [selectedTeam, setSelectedTeam] = useState<'ALL' | 'HOME' | 'AWAY'>('ALL');
     const [selectedPlayer, setSelectedPlayer] = useState<string>('ALL');
-    const [selectedActions, setSelectedActions] = useState<string[]>(['GOAL', 'POST', 'MISS', 'TURNOVER', 'STEAL', 'STEPS', 'DOUBLE_DRIBBLE', 'FOUL']);
+    const [selectedActions, setSelectedActions] = useState<string[]>(['GOAL', 'JUMP-SHOT', 'PASSING', 'DEFENCE', 'DRIBBLING', 'SHOT']);
 
     const [isGeneratingHighlight, setIsGeneratingHighlight] = useState(false);
     const [selectedClips, setSelectedClips] = useState<string[]>([]);
@@ -137,10 +137,11 @@ export const ClipEditor: React.FC = () => {
     const getActionColor = (action: string) => {
         switch (action) {
             case 'GOAL': return 'text-neon-green bg-neon-green/10 border-neon-green/20';
-            case 'POST': return 'text-yellow-400 bg-yellow-400/10 border-yellow-400/20';
-            case 'MISS': return 'text-neon-red bg-neon-red/10 border-neon-red/20';
-            case 'TURNOVER': return 'text-neon-red bg-neon-red/10 border-neon-red/20';
-            case 'STEAL': return 'text-cyan-400 bg-cyan-400/10 border-cyan-400/20';
+            case 'JUMP-SHOT': return 'text-purple-400 bg-purple-400/10 border-purple-400/20';
+            case 'PASSING': return 'text-blue-400 bg-blue-400/10 border-blue-400/20';
+            case 'DEFENCE': return 'text-red-400 bg-red-400/10 border-red-400/20';
+            case 'DRIBBLING': return 'text-orange-400 bg-orange-400/10 border-orange-400/20';
+            case 'SHOT': return 'text-yellow-400 bg-yellow-400/10 border-yellow-400/20';
             default: return 'text-white/60 bg-white/5 border-white/10';
         }
     };
@@ -280,7 +281,7 @@ export const ClipEditor: React.FC = () => {
                                     <button onClick={() => setSelectedActions([])} className="text-[10px] text-white/40 hover:text-white">Clear</button>
                                 </div>
                                 <div className="space-y-2">
-                                    {['GOAL', 'POST', 'MISS', 'TURNOVER', 'STEAL', 'STEPS', 'DOUBLE_DRIBBLE', 'FOUL'].map(action => (
+                                    {['GOAL', 'JUMP-SHOT', 'PASSING', 'DEFENCE', 'DRIBBLING', 'SHOT'].map(action => (
                                         <label key={action} className="flex items-center gap-2 cursor-pointer group">
                                             <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${selectedActions.includes(action) ? 'bg-primary border-primary' : 'border-white/20 bg-transparent'}`}>
                                                 {selectedActions.includes(action) && <span className="material-symbols-outlined text-white text-[10px]">check</span>}

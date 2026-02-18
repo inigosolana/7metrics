@@ -109,7 +109,7 @@ export interface VideoClip {
   duration: string;
   team: 'HOME' | 'AWAY';
   player: string; // Player Name
-  actionType: 'GOAL' | 'POST' | 'MISS' | 'TURNOVER' | 'STEAL' | 'STEPS' | 'DOUBLE_DRIBBLE' | 'FOUL';
+  actionType: 'GOAL' | 'JUMP-SHOT' | 'DRIBBLING' | 'SHOT' | 'DEFENCE' | 'PASSING' | 'POST' | 'MISS' | 'TURNOVER' | 'STEAL' | 'STEPS' | 'DOUBLE_DRIBBLE' | 'FOUL';
   thumbnailUrl: string;
   url?: string;
 }
