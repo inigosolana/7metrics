@@ -17,41 +17,56 @@ export const ClipEditor: React.FC = () => {
     const [selectedActions, setSelectedActions] = useState<string[]>(['GOAL', 'POST', 'MISS', 'TURNOVER', 'STEAL', 'STEPS', 'DOUBLE_DRIBBLE', 'FOUL']);
 
     const [isGeneratingHighlight, setIsGeneratingHighlight] = useState(false);
+    const [selectedClips, setSelectedClips] = useState<string[]>([]);
+
+    const toggleClipSelection = (clipId: string) => {
+        setSelectedClips(prev =>
+            prev.includes(clipId)
+                ? prev.filter(id => id !== clipId)
+                : [...prev, clipId]
+        );
+    };
+
+    const handleSelectAll = () => setSelectedClips(filteredClips.map(c => c.id));
+    const handleClearSelection = () => setSelectedClips([]);
 
     const handleCreateHighlight = async () => {
-        if (filteredClips.length === 0) return;
+        if (selectedClips.length === 0) {
+            alert("Por favor, selecciona al menos un clip para crear el video.");
+            return;
+        }
+
         setIsGeneratingHighlight(true);
-        setProgressMsg("Uniendo clips en el servidor...");
+        setProgressMsg("Uniendo clips seleccionados en el servidor...");
 
         try {
-            // Mandamos los IDs (que son las rutas relativas) al backend
-            const clipPaths = filteredClips.map(clip => clip.id);
-
+            // Mandamos SOLO los clips seleccionados al backend
             const response = await fetch(`${VideoProcessorService.API_BASE_URL}/generate-highlight`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'ngrok-skip-browser-warning': 'true'
                 },
-                body: JSON.stringify({ clips: clipPaths })
+                body: JSON.stringify({ clips: selectedClips })
             });
 
             if (response.ok) {
                 const data = await response.json();
                 const downloadUrl = `${VideoProcessorService.API_BASE_URL}${data.url}`;
 
-                // Forzar la descarga del vídeo final unido
                 const link = document.createElement('a');
                 link.href = downloadUrl;
-                link.setAttribute('download', `Highlight_${selectedPlayer}_${selectedTeam}.mp4`);
+                link.setAttribute('download', `Mi_Highlight_Personalizado.mp4`);
                 document.body.appendChild(link);
                 link.click();
                 document.body.removeChild(link);
+
+                setSelectedClips([]);
                 alert("¡Highlight generado y descargado con éxito!");
             }
         } catch (error) {
             console.error("Error uniendo clips:", error);
-            alert("Hubo un error al generar el Highlight.");
+            alert("Hubo un error al generar el Video.");
         } finally {
             setIsGeneratingHighlight(false);
         }
@@ -278,9 +293,17 @@ export const ClipEditor: React.FC = () => {
                             </div>
 
                             <div className="mt-auto pt-4 border-t border-white/10 space-y-3">
+                                <div className="flex justify-between items-center px-1">
+                                    <span className="text-xs text-white/60">Seleccionados: <strong className="text-primary">{selectedClips.length}</strong></span>
+                                    <div className="flex gap-2">
+                                        <button onClick={handleSelectAll} className="text-[10px] text-white/40 hover:text-white">Todos</button>
+                                        <button onClick={handleClearSelection} className="text-[10px] text-white/40 hover:text-white">Ninguno</button>
+                                    </div>
+                                </div>
+
                                 <button
                                     onClick={handleCreateHighlight}
-                                    disabled={isGeneratingHighlight || filteredClips.length === 0}
+                                    disabled={isGeneratingHighlight || selectedClips.length === 0}
                                     className="w-full bg-primary hover:bg-primary/80 text-white py-3 rounded-lg text-sm font-bold flex items-center justify-center gap-2 shadow-lg shadow-primary/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
                                     {isGeneratingHighlight ? (
@@ -288,14 +311,7 @@ export const ClipEditor: React.FC = () => {
                                     ) : (
                                         <span className="material-symbols-outlined text-lg">movie_edit</span>
                                     )}
-                                    {isGeneratingHighlight ? 'Uniendo Video...' : `Generar Highlight Reel (${filteredClips.length})`}
-                                </button>
-
-                                <button
-                                    onClick={handleBatchDownload}
-                                    className="w-full bg-white/10 hover:bg-white/20 text-white py-2 rounded-lg text-xs font-bold transition-all"
-                                >
-                                    Descargar Clips Sueltos
+                                    {isGeneratingHighlight ? 'Creando Video...' : `Unir Selección (${selectedClips.length})`}
                                 </button>
                             </div>
                         </div>
@@ -311,43 +327,62 @@ export const ClipEditor: React.FC = () => {
                             </div>
 
                             <div className="flex-1 overflow-y-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 content-start pr-2">
-                                {filteredClips.map((clip) => (
-                                    <div key={clip.id} className="bg-black/40 rounded-lg overflow-hidden border border-white/5 group hover:border-primary/50 transition-all">
-                                        <div className="relative aspect-video bg-black">
-                                            <img src={clip.thumbnailUrl} className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" />
-                                            <div className="absolute top-2 right-2 bg-black/80 text-white text-[10px] font-mono px-1.5 py-0.5 rounded">
-                                                {clip.duration}
+                                {filteredClips.map((clip) => {
+                                    const isSelected = selectedClips.includes(clip.id);
+
+                                    return (
+                                        <div
+                                            key={clip.id}
+                                            className={`bg-black/40 rounded-lg overflow-hidden border transition-all group ${isSelected ? 'border-primary ring-2 ring-primary/50' : 'border-white/5 hover:border-primary/50'
+                                                }`}
+                                        >
+                                            <div className="relative aspect-video bg-black">
+                                                {/* CHECKBOX DE SELECCIÓN DE CLIP */}
+                                                <div
+                                                    onClick={() => toggleClipSelection(clip.id)}
+                                                    className="absolute top-2 left-2 z-10 cursor-pointer bg-black/60 p-1.5 rounded hover:bg-black"
+                                                >
+                                                    <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${isSelected ? 'bg-primary border-primary' : 'border-white/50 bg-transparent'
+                                                        }`}>
+                                                        {isSelected && <span className="material-symbols-outlined text-white text-[14px]">check</span>}
+                                                    </div>
+                                                </div>
+
+                                                <img src={clip.thumbnailUrl} className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" />
+                                                <div className="absolute top-2 right-2 bg-black/80 text-white text-[10px] font-mono px-1.5 py-0.5 rounded">
+                                                    {clip.duration}
+                                                </div>
+                                                <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/40 cursor-pointer pointer-events-none">
+                                                    <span className="material-symbols-outlined text-4xl text-white">play_circle</span>
+                                                </div>
                                             </div>
-                                            <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/40 cursor-pointer" onClick={() => handleClipAnalysis(clip)}>
-                                                <span className="material-symbols-outlined text-4xl text-white">play_circle</span>
+                                            <div className="p-3">
+                                                <div className="flex justify-between items-start mb-2">
+                                                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${getActionColor(clip.actionType)}`}>
+                                                        {clip.actionType.replace('_', ' ')}
+                                                    </span>
+                                                    <span className="text-[10px] text-white/40 font-mono">{clip.startTime}</span>
+                                                </div>
+                                                <h4 className="text-sm font-bold text-white truncate">{clip.player}</h4>
+                                                <div className="flex justify-between items-center mt-3">
+                                                    <button
+                                                        onClick={() => handleClipAnalysis(clip)}
+                                                        className="text-[10px] font-bold text-primary hover:text-white transition-colors flex items-center gap-1"
+                                                    >
+                                                        <span className="material-symbols-outlined text-xs">analytics</span>
+                                                        AI ANALYSIS
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleDownload(clip)}
+                                                        className="text-white/40 hover:text-white hover:bg-white/10 p-1.5 rounded transition-colors"
+                                                    >
+                                                        <span className="material-symbols-outlined text-lg">download</span>
+                                                    </button>
+                                                </div>
                                             </div>
                                         </div>
-                                        <div className="p-3">
-                                            <div className="flex justify-between items-start mb-2">
-                                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${getActionColor(clip.actionType)}`}>
-                                                    {clip.actionType.replace('_', ' ')}
-                                                </span>
-                                                <span className="text-[10px] text-white/40 font-mono">{clip.startTime}</span>
-                                            </div>
-                                            <h4 className="text-sm font-bold text-white truncate">{clip.player}</h4>
-                                            <div className="flex justify-between items-center mt-3">
-                                                <button
-                                                    onClick={() => handleClipAnalysis(clip)}
-                                                    className="text-[10px] font-bold text-primary hover:text-white transition-colors flex items-center gap-1"
-                                                >
-                                                    <span className="material-symbols-outlined text-xs">analytics</span>
-                                                    AI ANALYSIS
-                                                </button>
-                                                <button
-                                                    onClick={() => handleDownload(clip)}
-                                                    className="text-white/40 hover:text-white hover:bg-white/10 p-1.5 rounded transition-colors"
-                                                >
-                                                    <span className="material-symbols-outlined text-lg">download</span>
-                                                </button>
-                                            </div>
-                                        </div>
-                                    </div>
-                                ))}
+                                    );
+                                })}
                             </div>
                         </div>
 
