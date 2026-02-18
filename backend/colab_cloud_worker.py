@@ -460,6 +460,19 @@ if __name__ == "__main__":
 
     # Iniciar servidor Uvicorn (Bloqueante para que Colab no cierre el script)
     print("🚀 Servidor Uvicorn Iniciando...")
-    import nest_asyncio
-    nest_asyncio.apply()
-    uvicorn.run(app, host="0.0.0.0", port=PORT)
+    # Iniciar servidor Uvicorn en un hilo separado para evitar conflictos con el loop de Colab
+    print("🚀 Servidor Uvicorn Iniciando en segundo plano...")
+    
+    def run_server():
+        # Desactivamos access log para menos ruido, mantenemos log de error
+        uvicorn.run(app, host="0.0.0.0", port=PORT, log_level="info")
+
+    t = threading.Thread(target=run_server)
+    t.start()
+
+    # Mantener el script vivo (y la celda de Colab ejecutándose)
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        print("🛑 Deteniendo servidor...")
