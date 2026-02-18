@@ -148,26 +148,34 @@ export class VideoProcessorService {
     }
 
     private static parseBackendClip(backendClip: any): VideoClip {
-        // La ruta vendrá como: "HOME/Jugador_1/120_135.mp4"
+        // La ruta vendrá como: "HOME/Jugador_1/jump-shot_120_135.mp4"
         const pathParts = backendClip.path.split('/');
         const team = pathParts[0] || 'UNKNOWN';
         const player = pathParts[1] || 'Unknown';
-        const filename = pathParts[2] ? pathParts[2].replace('.mp4', '') : '0_0';
+        const filename = pathParts[2] ? pathParts[2].replace('.mp4', '') : 'GOAL_0_0';
 
-        // Extraer inicio y fin
-        const timeParts = filename.split('_');
-        const startSec = parseInt(timeParts[0]) || 0;
-        const endSec = timeParts.length > 1 ? parseInt(timeParts[1]) : startSec + 10;
+        // Extraer la acción, inicio y fin (ej: ["jump-shot", "120", "135"])
+        const nameParts = filename.split('_');
+        let action = 'GOAL';
+        let startSec = 0;
+        let endSec = 10;
+
+        if (nameParts.length >= 3) {
+            action = nameParts[0].toUpperCase(); // "JUMP-SHOT", "PASSING", etc.
+            startSec = parseInt(nameParts[1]) || 0;
+            endSec = parseInt(nameParts[2]) || startSec + 10;
+        }
+
         const durationSec = endSec - startSec;
 
         return {
-            id: backendClip.path, // Usamos la ruta como ID para luego poder unirlos
+            id: backendClip.path,
             startTime: this.formatSeconds(startSec),
             endTime: this.formatSeconds(endSec),
             duration: `${durationSec}s`,
             team: (team === 'HOME' || team === 'AWAY') ? team : 'AWAY',
-            player: player.replace('_', ' '), // "Jugador_1" -> "Jugador 1"
-            actionType: 'GOAL', // Por defecto, se puede mejorar con IA después
+            player: player.replace('_', ' '),
+            actionType: action as any, // Aquí inyectamos la acción real de la IA
             thumbnailUrl: `https://picsum.photos/300/170?random=${startSec}`,
             url: backendClip.url.startsWith('http') ? backendClip.url : `${this.API_BASE_URL}${backendClip.url}`
         };

@@ -17,7 +17,7 @@ def install_dependencies():
         subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", 
             "fastapi", "uvicorn", "python-multipart", "pyngrok", 
             "ultralytics", "opencv-python-headless", "ffmpeg-python", 
-            "scikit-learn", "scipy", "lapx", "nest_asyncio"])
+            "scikit-learn", "scipy", "lapx", "nest_asyncio", "tensorflow"])
         print("✅ Dependencias listas.")
     except Exception as e:
         print(f"❌ Error instalando: {e}")
@@ -44,6 +44,19 @@ except ImportError:
     import nest_asyncio
 
 nest_asyncio.apply()
+
+# --- 1.1 CONFIGURACIÓN TENSORFLOW & MODELO LRCN ---
+import tensorflow as tf
+from tensorflow.keras.models import load_model
+
+# Cargar el modelo de reconocimiento de acciones de la tesis
+try:
+    print("🧠 Cargando modelo de Acciones LRCN...")
+    ACTION_MODEL = load_model("LRCN_model.h5") # Asegúrate de que el nombre coincida con el archivo que subas
+    CLASSES_LIST = ["jump-shot", "dribbling", "shot", "defence", "passing"]
+except Exception as e:
+    print(f"⚠️ No se pudo cargar el modelo LRCN: {e}")
+    ACTION_MODEL = None
 
 # --- 2. GESTIÓN DEL MODELO (Auto-Export a TensorRT) ---
 ORIGINAL_MODEL = "best.pt"
@@ -146,9 +159,9 @@ class HandballProcessor:
         timestamp = int(start)
         folder = os.path.join(OUTPUT_DIR, team, player)
         os.makedirs(folder, exist_ok=True)
-        # CAMBIO AQUÍ: Guardamos el archivo como "inicio_fin.mp4" (ej: 120_135.mp4)
-        filename = f"{int(start)}_{int(end)}.mp4"
-        output_file = os.path.join(folder, filename)
+
+        # 1. Guardamos un archivo temporal primero
+        temp_file = os.path.join(folder, f"temp_{int(start)}_{int(end)}.mp4")
         
         cmd = [
             'ffmpeg', '-y', 
@@ -157,10 +170,51 @@ class HandballProcessor:
             '-i', self.input_path, 
             '-c', 'copy', 
             '-loglevel', 'error', 
-            output_file
+            temp_file
         ]
         subprocess.run(cmd)
-        print(f"🎬 Clip Guardado: {team} | {player} ({filename})")
+
+        # 2. Análisis de Acción usando la lógica de la Tesis (LRCN)
+        predicted_action = "GOAL" # Por defecto por si falla
+        if ACTION_MODEL is not None:
+            try:
+                frames_list = []
+                video_reader = cv2.VideoCapture(temp_file)
+                video_frames_count = int(video_reader.get(cv2.CAP_PROP_FRAME_COUNT))
+                
+                # Extraer 20 frames espaciados uniformemente
+                skip_frames_window = max(int(video_frames_count / 20), 1)
+
+                for frame_counter in range(20):
+                    video_reader.set(cv2.CAP_PROP_POS_FRAMES, frame_counter * skip_frames_window)
+                    success, frame = video_reader.read()
+                    if not success: break
+                    
+                    # Redimensionar a 64x64 y normalizar (Requisito del modelo de la tesis)
+                    resized_frame = cv2.resize(frame, (64, 64))
+                    normalized_frame = resized_frame / 255.0
+                    frames_list.append(normalized_frame)
+                    
+                video_reader.release()
+
+                # Si logramos extraer los 20 frames, predecimos
+                if len(frames_list) == 20:
+                    input_sequence = np.expand_dims(np.array(frames_list), axis=0)
+                    predictions = ACTION_MODEL.predict(input_sequence, verbose=0)
+                    predicted_index = np.argmax(predictions)
+                    predicted_action = CLASSES_LIST[predicted_index]
+            except Exception as e:
+                print(f"Error en predicción de acción: {e}")
+
+        # 3. Renombramos el archivo final incluyendo la acción predicha
+        # Ej: "jump-shot_120_135.mp4"
+        final_filename = f"{predicted_action}_{int(start)}_{int(end)}.mp4"
+        final_file = os.path.join(folder, final_filename)
+        
+        if os.path.exists(temp_file):
+            os.rename(temp_file, final_file)
+
+        print(f"🎬 Clip: {team} | {player} | Acción: {predicted_action.upper()} ({final_filename})")
 
     def process(self):
         cap = cv2.VideoCapture(self.input_path)
