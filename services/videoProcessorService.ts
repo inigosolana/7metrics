@@ -175,8 +175,8 @@ export class VideoProcessorService {
             duration: `${durationSec}s`,
             team: (team === 'HOME' || team === 'AWAY') ? team : 'AWAY',
             player: player.replace('_', ' '),
-            actionType: action as any, // Aquí inyectamos la acción real de la IA
-            thumbnailUrl: `https://picsum.photos/300/170?random=${startSec}`,
+            actionType: action as any,
+            thumbnailUrl: '', // Eliminamos la foto aleatoria de perro/paisaje
             url: backendClip.url.startsWith('http') ? backendClip.url : `${this.API_BASE_URL}${backendClip.url}`
         };
     }

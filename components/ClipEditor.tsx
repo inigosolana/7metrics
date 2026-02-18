@@ -348,8 +348,16 @@ export const ClipEditor: React.FC = () => {
                                                     </div>
                                                 </div>
 
-                                                <img src={clip.thumbnailUrl} className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" />
-                                                <div className="absolute top-2 right-2 bg-black/80 text-white text-[10px] font-mono px-1.5 py-0.5 rounded">
+                                                <video
+                                                    src={clip.url}
+                                                    className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity"
+                                                    muted
+                                                    playsInline
+                                                    loop
+                                                    onMouseOver={(e) => e.currentTarget.play()}
+                                                    onMouseOut={(e) => { e.currentTarget.pause(); e.currentTarget.currentTime = 0; }}
+                                                />
+                                                <div className="absolute top-2 right-2 bg-black/80 text-white text-[10px] font-mono px-1.5 py-0.5 rounded pointer-events-none">
                                                     {clip.duration}
                                                 </div>
                                                 <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/40 cursor-pointer pointer-events-none">
