@@ -431,27 +431,33 @@ def run_pipeline(path):
     processor = HandballProcessor(path)
     processor.process()
 
+# --- 7. EJECUCIÓN ---
 if __name__ == "__main__":
-    # Matar ngrok previo si existe
-    os.system("pkill ngrok")
+    # Limpieza agresiva de cualquier proceso previo en el puerto 8000
+    try:
+        print("🧹 Limpiando procesos antiguos en el puerto 8000...")
+        os.system("fuser -k 8000/tcp")
+        time.sleep(2) # Dar tiempo a liberar el puerto
+    except:
+        pass
+
+    # Configurar Ngrok
     ngrok.set_auth_token(NGROK_AUTH_TOKEN)
     
     # Iniciar túnel
     try:
-        url = ngrok.connect(PORT).public_url
-        print(f"\n🌍 \033[1;32mURL PÚBLICA (Poner en Frontend): {url}\033[0m \n")
+        # Matar túneles previos
+        ngrok.kill()
+        
+        # Crear nuevo túnel con configuración explícita
+        public_url = ngrok.connect(PORT, "http").public_url
+        print(f"\n🌍 \033[1;32mURL PÚBLICA (Poner en Frontend): {public_url}\033[0m \n")
     except Exception as e:
         print(f"❌ Error Ngrok: {e}")
+        # Intentar conectar sin config extra si falla
+        public_url = ngrok.connect(PORT).public_url
+        print(f"\n🌍 \033[1;32mURL PÚBLICA (Fallback): {public_url}\033[0m \n")
 
-    # Arrancar servidor en hilo aparte para no bloquear Colab
-    def start_server():
-        uvicorn.run(app, host="0.0.0.0", port=PORT, log_level="warning")
-
-    thread = threading.Thread(target=start_server, daemon=True)
-    thread.start()
-    
-    # Mantener vivo
-    try:
-        while True: time.sleep(1)
-    except KeyboardInterrupt:
-        print("🛑 Servidor detenido.")
+    # Iniciar servidor Uvicorn (Bloqueante para que Colab no cierre el script)
+    print("� Servidor Uvicorn Iniciando...")
+    uvicorn.run(app, host="0.0.0.0", port=PORT)
