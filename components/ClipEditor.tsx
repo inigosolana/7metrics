@@ -337,10 +337,13 @@ export const ClipEditor: React.FC = () => {
                                             className={`bg-black/40 rounded-lg overflow-hidden border transition-all group ${isSelected ? 'border-primary ring-2 ring-primary/50' : 'border-white/5 hover:border-primary/50'
                                                 }`}
                                         >
-                                            <div className="relative aspect-video bg-black">
+                                            <div
+                                                className="relative aspect-video bg-black cursor-pointer"
+                                                onClick={() => handleClipAnalysis(clip)}
+                                            >
                                                 {/* CHECKBOX DE SELECCIÓN DE CLIP */}
                                                 <div
-                                                    onClick={() => toggleClipSelection(clip.id)}
+                                                    onClick={(e) => { e.stopPropagation(); toggleClipSelection(clip.id); }}
                                                     className="absolute top-2 left-2 z-10 cursor-pointer bg-black/60 p-1.5 rounded hover:bg-black"
                                                 >
                                                     <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${isSelected ? 'bg-primary border-primary' : 'border-white/50 bg-transparent'
@@ -362,7 +365,7 @@ export const ClipEditor: React.FC = () => {
                                                 <div className="absolute top-2 right-2 bg-black/80 text-white text-[10px] font-mono px-1.5 py-0.5 rounded pointer-events-none">
                                                     {clip.duration}
                                                 </div>
-                                                <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/40 cursor-pointer pointer-events-none">
+                                                <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/40 pointer-events-none">
                                                     <span className="material-symbols-outlined text-4xl text-white">play_circle</span>
                                                 </div>
                                             </div>
@@ -410,7 +413,9 @@ export const ClipEditor: React.FC = () => {
                                 </div>
                                 <div className="p-6 overflow-y-auto space-y-6">
                                     <div className="aspect-video rounded-lg overflow-hidden border border-white/10 bg-black">
-                                        <img src={selectedClip.thumbnailUrl} className="w-full h-full object-cover" />
+                                        <div className="aspect-video rounded-lg overflow-hidden border border-white/10 bg-black">
+                                            <video src={selectedClip.url} className="w-full h-full object-contain" controls autoPlay loop />
+                                        </div>
                                     </div>
                                     <div className="space-y-1">
                                         <p className="text-[10px] text-[#cbad90] font-bold uppercase tracking-widest">Metadata</p>
