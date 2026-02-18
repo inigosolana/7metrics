@@ -459,5 +459,7 @@ if __name__ == "__main__":
         print(f"\n🌍 \033[1;32mURL PÚBLICA (Fallback): {public_url}\033[0m \n")
 
     # Iniciar servidor Uvicorn (Bloqueante para que Colab no cierre el script)
-    print("� Servidor Uvicorn Iniciando...")
+    print("🚀 Servidor Uvicorn Iniciando...")
+    import nest_asyncio
+    nest_asyncio.apply()
     uvicorn.run(app, host="0.0.0.0", port=PORT)
