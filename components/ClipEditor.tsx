@@ -16,6 +16,47 @@ export const ClipEditor: React.FC = () => {
     const [selectedPlayer, setSelectedPlayer] = useState<string>('ALL');
     const [selectedActions, setSelectedActions] = useState<string[]>(['GOAL', 'POST', 'MISS', 'TURNOVER', 'STEAL', 'STEPS', 'DOUBLE_DRIBBLE', 'FOUL']);
 
+    const [isGeneratingHighlight, setIsGeneratingHighlight] = useState(false);
+
+    const handleCreateHighlight = async () => {
+        if (filteredClips.length === 0) return;
+        setIsGeneratingHighlight(true);
+        setProgressMsg("Uniendo clips en el servidor...");
+
+        try {
+            // Mandamos los IDs (que son las rutas relativas) al backend
+            const clipPaths = filteredClips.map(clip => clip.id);
+
+            const response = await fetch(`${VideoProcessorService.API_BASE_URL}/generate-highlight`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'ngrok-skip-browser-warning': 'true'
+                },
+                body: JSON.stringify({ clips: clipPaths })
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                const downloadUrl = `${VideoProcessorService.API_BASE_URL}${data.url}`;
+
+                // Forzar la descarga del vídeo final unido
+                const link = document.createElement('a');
+                link.href = downloadUrl;
+                link.setAttribute('download', `Highlight_${selectedPlayer}_${selectedTeam}.mp4`);
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                alert("¡Highlight generado y descargado con éxito!");
+            }
+        } catch (error) {
+            console.error("Error uniendo clips:", error);
+            alert("Hubo un error al generar el Highlight.");
+        } finally {
+            setIsGeneratingHighlight(false);
+        }
+    };
+
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (file) {
@@ -236,13 +277,25 @@ export const ClipEditor: React.FC = () => {
                                 </div>
                             </div>
 
-                            <div className="mt-auto pt-4 border-t border-white/10">
+                            <div className="mt-auto pt-4 border-t border-white/10 space-y-3">
+                                <button
+                                    onClick={handleCreateHighlight}
+                                    disabled={isGeneratingHighlight || filteredClips.length === 0}
+                                    className="w-full bg-primary hover:bg-primary/80 text-white py-3 rounded-lg text-sm font-bold flex items-center justify-center gap-2 shadow-lg shadow-primary/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    {isGeneratingHighlight ? (
+                                        <span className="material-symbols-outlined text-lg animate-spin">sync</span>
+                                    ) : (
+                                        <span className="material-symbols-outlined text-lg">movie_edit</span>
+                                    )}
+                                    {isGeneratingHighlight ? 'Uniendo Video...' : `Generar Highlight Reel (${filteredClips.length})`}
+                                </button>
+
                                 <button
                                     onClick={handleBatchDownload}
-                                    className="w-full bg-primary hover:bg-primary/80 text-white py-3 rounded-lg text-sm font-bold flex items-center justify-center gap-2 shadow-lg shadow-primary/20 active:scale-95 transition-all"
+                                    className="w-full bg-white/10 hover:bg-white/20 text-white py-2 rounded-lg text-xs font-bold transition-all"
                                 >
-                                    <span className="material-symbols-outlined text-lg">download</span>
-                                    Export ({filteredClips.length})
+                                    Descargar Clips Sueltos
                                 </button>
                             </div>
                         </div>

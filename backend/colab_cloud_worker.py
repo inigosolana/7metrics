@@ -146,7 +146,9 @@ class HandballProcessor:
         timestamp = int(start)
         folder = os.path.join(OUTPUT_DIR, team, player)
         os.makedirs(folder, exist_ok=True)
-        output_file = os.path.join(folder, f"{timestamp}s.mp4")
+        # CAMBIO AQUÍ: Guardamos el archivo como "inicio_fin.mp4" (ej: 120_135.mp4)
+        filename = f"{int(start)}_{int(end)}.mp4"
+        output_file = os.path.join(folder, filename)
         
         cmd = [
             'ffmpeg', '-y', 
@@ -158,7 +160,7 @@ class HandballProcessor:
             output_file
         ]
         subprocess.run(cmd)
-        print(f"🎬 Clip Guardado: {team} | {player} ({timestamp}s)")
+        print(f"🎬 Clip Guardado: {team} | {player} ({filename})")
 
     def process(self):
         cap = cv2.VideoCapture(self.input_path)
@@ -293,6 +295,35 @@ class HandballProcessor:
 
 app = FastAPI()
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+
+from pydantic import BaseModel
+import uuid
+
+class HighlightRequest(BaseModel):
+    clips: list[str] # Lista de rutas relativas de los videos
+
+@app.post("/generate-highlight")
+def create_highlight(req: HighlightRequest):
+    list_file = f"list_{uuid.uuid4().hex}.txt"
+    out_file = f"highlight_{uuid.uuid4().hex}.mp4"
+    out_path = os.path.join(OUTPUT_DIR, out_file)
+    
+    # Crear un archivo de texto con la lista de videos para que FFmpeg los una
+    with open(list_file, "w") as f:
+        for clip in req.clips:
+            abs_path = os.path.join(OUTPUT_DIR, clip)
+            f.write(f"file '{abs_path}'\n")
+    
+    # FFmpeg concatena sin recodificar (súper rápido)
+    subprocess.run(['ffmpeg', '-y', '-f', 'concat', '-safe', '0', '-i', list_file, '-c', 'copy', out_path])
+    if os.path.exists(list_file):
+        os.remove(list_file)
+    
+    return {"url": f"/download_highlight/{out_file}"}
+
+@app.get("/download_highlight/{filename}")
+def download_highlight(filename: str):
+    return FileResponse(os.path.join(OUTPUT_DIR, filename))
 
 @app.get("/status")
 def get_status(): return GLOBAL_STATE

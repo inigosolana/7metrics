@@ -148,27 +148,27 @@ export class VideoProcessorService {
     }
 
     private static parseBackendClip(backendClip: any): VideoClip {
-        // New structure from Colab:
-        // path: "Team/Player/Timestamp.mp4"
+        // La ruta vendrá como: "HOME/Jugador_1/120_135.mp4"
         const pathParts = backendClip.path.split('/');
         const team = pathParts[0] || 'UNKNOWN';
-        const player = pathParts[1] || 'Detected';
-        const filename = backendClip.filename || '';
-        const timestamp = parseInt(filename.replace('.mp4', '')) || 0;
+        const player = pathParts[1] || 'Unknown';
+        const filename = pathParts[2] ? pathParts[2].replace('.mp4', '') : '0_0';
 
-        const m = Math.floor(timestamp / 60);
-        const s = timestamp % 60;
-        const timeStr = `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+        // Extraer inicio y fin
+        const timeParts = filename.split('_');
+        const startSec = parseInt(timeParts[0]) || 0;
+        const endSec = timeParts.length > 1 ? parseInt(timeParts[1]) : startSec + 10;
+        const durationSec = endSec - startSec;
 
         return {
-            id: backendClip.path,
-            startTime: timeStr,
-            endTime: `${m.toString().padStart(2, '0')}:${(s + 15).toString().padStart(2, '0')}`, // 15s window
-            duration: "15s",
-            team: (team === 'HOME' || team === 'AWAY') ? team : 'AWAY', // Fallback to AWAY if UNK
-            player: player === 'UNK' ? 'Unknown Player' : player,
-            actionType: 'GOAL', // Default label for offensive windows
-            thumbnailUrl: `https://picsum.photos/300/170?random=${backendClip.path}`,
+            id: backendClip.path, // Usamos la ruta como ID para luego poder unirlos
+            startTime: this.formatSeconds(startSec),
+            endTime: this.formatSeconds(endSec),
+            duration: `${durationSec}s`,
+            team: (team === 'HOME' || team === 'AWAY') ? team : 'AWAY',
+            player: player.replace('_', ' '), // "Jugador_1" -> "Jugador 1"
+            actionType: 'GOAL', // Por defecto, se puede mejorar con IA después
+            thumbnailUrl: `https://picsum.photos/300/170?random=${startSec}`,
             url: backendClip.url.startsWith('http') ? backendClip.url : `${this.API_BASE_URL}${backendClip.url}`
         };
     }
