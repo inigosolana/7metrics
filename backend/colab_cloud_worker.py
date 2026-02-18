@@ -63,28 +63,44 @@ ORIGINAL_MODEL = "best.pt"
 ENGINE_MODEL = "best.engine"
 
 def load_optimized_model():
-    """Carga TensorRT si existe, o convierte el .pt si hay GPU"""
+    """Carga TensorRT si existe y funciona, o convierte el .pt si hay GPU"""
+    
+    # 1. Intentar cargar motor existente con validación
     if os.path.exists(ENGINE_MODEL):
         print(f"⚡ Cargando motor acelerado: {ENGINE_MODEL}")
-        return YOLO(ENGINE_MODEL)
-    
+        try:
+            model = YOLO(ENGINE_MODEL)
+            # Prueba rápida de inferencia para validar versión (evita crash posterior)
+            dummy = np.zeros((640, 640, 3), dtype=np.uint8)
+            model.predict(dummy, verbose=False)
+            print("✅ Motor validado correctamente.")
+            return model
+        except Exception as e:
+            print(f"⚠️ MOTOR CORRUPTO O VERSIÓN INCORRECTA ({e}). ELIMINANDO PARA REGENERAR...")
+            try:
+                os.remove(ENGINE_MODEL)
+            except:
+                pass
+            # Continuamos abajo para regenerarlo...
+
+    # 2. Si no hay motor o falló, cargar .pt y optimizar
     if os.path.exists(ORIGINAL_MODEL):
-        print(f"⚠️ Detectado modelo estándar {ORIGINAL_MODEL}")
+        print(f"⚠️ Usando modelo estándar {ORIGINAL_MODEL}")
         if torch.cuda.is_available():
-            print("🚀 GPU Detectada: Convirtiendo a TensorRT para máxima velocidad (esto tarda 2-3 min una vez)...")
+            print("🚀 GPU Detectada: Optimizando modelo (esto tarda ~2 min la primera vez)...")
             try:
                 model = YOLO(ORIGINAL_MODEL)
                 # Exportar a TensorRT (fp16 para mayor velocidad en T4)
                 model.export(format="engine", half=True, imgsz=640, device=0)
-                print("✅ Conversión completada. Cargando motor...")
+                print("✅ Conversión completada. Cargando nuevo motor...")
                 return YOLO(ENGINE_MODEL)
             except Exception as e:
-                print(f"❌ Falló la optimización ({e}). Usando modelo estándar.")
+                print(f"❌ Falló la optimización ({e}). Usando modelo estándar lento.")
                 return YOLO(ORIGINAL_MODEL)
         else:
             return YOLO(ORIGINAL_MODEL)
     
-    print("⚠️ No se encontró best.pt. Descargando modelo base YOLOv8n...")
+    print("⚠️ No se encontró best.pt. Descargando YOLOv8n base...")
     return YOLO("yolov8n.pt")
 
 # --- CONFIGURACIÓN ---
