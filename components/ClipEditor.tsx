@@ -354,6 +354,7 @@ export const ClipEditor: React.FC = () => {
                                                     muted
                                                     playsInline
                                                     loop
+                                                    preload="metadata"
                                                     onMouseOver={(e) => e.currentTarget.play()}
                                                     onMouseOut={(e) => { e.currentTarget.pause(); e.currentTarget.currentTime = 0; }}
                                                 />
