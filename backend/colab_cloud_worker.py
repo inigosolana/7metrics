@@ -178,12 +178,9 @@ class TeamClassifier:
             avg = cv2.mean(hsv, mask=inverse_mask)[:3]
             
             label = self.kmeans.predict([avg])[0]
-            # Mapeo a HOME/AWAY: El grupo 0 y 1 suelen ser los equipos principales. 
-            # El grupo 2 suele ser el portero o árbitro.
-            if label == 0: return "HOME"
-            if label == 1: return "AWAY"
-            return "UNKNOWN" # Evitar que el portero/fondo sume como equipo si es clúster 2
-        except: return "UNKNOWN"
+            # Devolvemos directamente el nombre del color detectado (ROJO, AZUL, etc.)
+            return self.team_names[label] if label in self.team_names else "DESCONOCIDO"
+        except: return "DESCONOCIDO"
 
 class HandballProcessor:
     def __init__(self, input_path, task_id=None):
@@ -238,50 +235,22 @@ class HandballProcessor:
         subprocess.run(cmd)
 
         # 2. Análisis de Acción usando la lógica de la Tesis (LRCN)
-        predicted_action = "GOAL" # Por defecto por si falla
+        # 2. Análisis de Acción (Parche temporal MVP: LRCN desactivado hasta tracking por jugador)
+        predicted_action = "Ataque Detectado"
+        """
         if ACTION_MODEL is not None:
             try:
-                frames_list = []
-                video_reader = cv2.VideoCapture(temp_file)
-                video_frames_count = int(video_reader.get(cv2.CAP_PROP_FRAME_COUNT))
-                
-                # Extraer 20 frames espaciados uniformemente
-                skip_frames_window = max(int(video_frames_count / 20), 1)
-
-                for frame_counter in range(20):
-                    video_reader.set(cv2.CAP_PROP_POS_FRAMES, frame_counter * skip_frames_window)
-                    success, frame = video_reader.read()
-                    if not success: break
-                    
-                    # Redimensionar a 64x64 y normalizar (Requisito del modelo de la tesis)
-                    resized_frame = cv2.resize(frame, (64, 64))
-                    normalized_frame = resized_frame / 255.0
-                    frames_list.append(normalized_frame)
-                    
-                video_reader.release()
-
-                # Si logramos extraer los 20 frames, predecimos
-                if len(frames_list) == 20:
-                    input_sequence = np.expand_dims(np.array(frames_list), axis=0)
-                    predictions = ACTION_MODEL.predict(input_sequence, verbose=0)
-                    predicted_index = np.argmax(predictions)
-                    predicted_action = CLASSES_LIST[predicted_index]
+                # ... (bloque desactivado temporalmente)
+                pass
             except Exception as e:
                 print(f"Error en predicción de acción: {e}")
+        """
 
         # 3. Renombramos el archivo final y guardamos metadatos
         final_filename = f"{clip_id}.mp4"
         final_file = os.path.join(OUTPUT_DIR, final_filename)
         
-        team_label = "Desconocido"
-        if team == "HOME":
-            team_label = "Equipo Local"
-            if hasattr(self.team_clf, 'team_names'):
-                team_label += f" ({self.team_clf.team_names[0]})"
-        elif team == "AWAY":
-            team_label = "Equipo Visitante"
-            if hasattr(self.team_clf, 'team_names'):
-                team_label += f" ({self.team_clf.team_names[1]})"
+        team_label = str(team) if team else "Desconocido"
         
         if os.path.exists(temp_file):
             os.rename(temp_file, final_file)
@@ -372,6 +341,23 @@ class HandballProcessor:
         while cap.isOpened():
             ret, frame = cap.read()
             if not ret: break
+
+            # 🛠️ BUG FIX: Progreso siempre visible (antes del STRIDE)
+            if frame_idx % 30 == 0: 
+                elapsed = time.time() - start_time
+                if elapsed > 0:
+                    fps_proc = frame_idx / elapsed
+                    frames_restantes = total_frames - frame_idx
+                    eta = int(frames_restantes / fps_proc) if fps_proc > 0 else 0
+                    prog = (frame_idx / total_frames) * 100
+                    prog_rounded = round(prog, 1)
+                    
+                    GLOBAL_STATE["progress"] = prog_rounded
+                    GLOBAL_STATE["eta_seconds"] = eta
+                    if self.task_id and self.task_id in TASKS:
+                        TASKS[self.task_id]["progress"] = prog_rounded
+                        TASKS[self.task_id]["eta_seconds"] = eta
+                    print(f"📊 {prog_rounded}% | Vel: {fps_proc:.1f} FPS | ETA: {eta}s")
 
             if frame_idx % STRIDE != 0:
                 frame_idx += 1
@@ -466,24 +452,6 @@ class HandballProcessor:
                         self.attack_cooldown = 0
 
             frame_idx += 1
-            if frame_idx % 30 == 0: # Cada segundo de video aprox con STRIDE=2
-                elapsed = time.time() - start_time
-                if elapsed > 0:
-                    fps_proc = frame_idx / elapsed
-                    frames_restantes = total_frames - frame_idx
-                    eta = int(frames_restantes / fps_proc) if fps_proc > 0 else 0
-                    prog = (frame_idx / total_frames) * 100
-                    
-                    # Actualizar estados
-                    prog_rounded = round(prog, 1)
-                    GLOBAL_STATE["progress"] = prog_rounded
-                    GLOBAL_STATE["eta_seconds"] = eta
-                    
-                    if self.task_id and self.task_id in TASKS:
-                        TASKS[self.task_id]["progress"] = prog_rounded
-                        TASKS[self.task_id]["eta_seconds"] = eta
-                        
-                    print(f"📊 {prog_rounded}% | Vel: {fps_proc:.1f} FPS | ETA: {eta}s")
 
         cap.release()
         if self.task_id and self.task_id in TASKS:
