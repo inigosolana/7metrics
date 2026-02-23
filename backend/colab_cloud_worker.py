@@ -274,10 +274,43 @@ class HandballProcessor:
         w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         h_orig = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         
+        # --- FASE 1: CALIBRACIÓN DE COLORES (Detectar primero) ---
+        print("\n\033[1;33m🔍 FASE 1: Calibrando colores de equipos...\033[0m")
+        GLOBAL_STATE["status"] = "calibrating"
+        
+        cal_frame = 0
+        while cap.isOpened() and not self.team_clf.trained and cal_frame < min(total_frames, 3600): # Máximo 2 min de busca
+            ret, frame = cap.read()
+            if not ret: break
+            
+            if cal_frame % 15 == 0: # Saltamos frames para ir rápido
+                small = cv2.resize(frame, (640, 384))
+                results = self.model.predict(small, verbose=False, imgsz=640, conf=0.4)
+                if results[0].boxes is not None:
+                    boxes = results[0].boxes.xyxy.cpu().numpy()
+                    cls = results[0].boxes.cls.cpu().numpy()
+                    for i, c in enumerate(cls):
+                        if int(c) == 0: # Persona
+                            b = boxes[i]
+                            # Escalar coordenadas
+                            x1, y1, x2, y2 = int(b[0]*w/640), int(b[1]*h_orig/384), int(b[2]*w/640), int(b[3]*h_orig/384)
+                            crop = frame[max(0,y1):min(y2,h_orig), max(0,x1):min(x2,w)]
+                            if crop.size > 0: self.training_crops.append(crop)
+                
+                if len(self.training_crops) >= 40:
+                    self.team_clf.train(self.training_crops)
+                    break
+            cal_frame += 1
+
+        # Reiniciar video para el proceso real
+        cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+        GLOBAL_STATE["status"] = "processing"
+        print("\033[1;32m🚀 FASE 2: Iniciando análisis táctico completo...\033[0m")
+        
         STRIDE = 2 
         LEAD_IN = 8 
         LEAD_OUT = 3
-        COOLDOWN_FRAMES = int(fps * 1.5) # 1.5 segundos de "paz" para cerrar el ataque
+        COOLDOWN_FRAMES = int(fps * 1.5)
         
         zona_izq = w * 0.25
         zona_der = w * 0.75
@@ -285,8 +318,6 @@ class HandballProcessor:
         frame_idx = 0
         start_time = time.time()
         
-        print(f"🚀 Iniciando análisis a {fps:.1f} FPS (Stride: {STRIDE})...")
-
         while cap.isOpened():
             ret, frame = cap.read()
             if not ret: break
@@ -300,6 +331,7 @@ class HandballProcessor:
             scale_x = w / 640
             scale_y = h_orig / 384
 
+            # Usar persist=True para tracking
             results = self.model.track(small_frame, persist=True, verbose=False, imgsz=640, tracker="bytetrack.yaml", conf=0.25)
             res = results[0]
             
@@ -323,54 +355,37 @@ class HandballProcessor:
                         ball_pos = ((x1+x2)/2, (y1+y2)/2)
                     elif is_player and i < len(ids):
                         players.append({'id': ids[i], 'box': [x1, y1, x2, y2]})
-                        if not self.team_clf.trained and current_time < 60:
-                            if len(self.training_crops) < 200:
-                                crop = frame[max(0,y1):min(y2,h_orig), max(0,x1):min(x2,w)]
-                                if crop.size > 0: self.training_crops.append(crop)
-
-                if len(self.training_crops) >= 30 and not self.team_clf.trained:
-                    self.team_clf.train(self.training_crops)
 
             if ball_pos:
                 bx, by = ball_pos
                 in_danger_zone = (bx < zona_izq) or (bx > zona_der)
                 
                 closest_p = None
-                # Umbral dinámico basado en resolución (ej: 20% del ancho del video)
                 min_d = w * 0.20 
                 
                 for p in players:
                     px = (p['box'][0] + p['box'][2]) / 2
                     py = (p['box'][1] + p['box'][3]) / 2
                     pb = p['box']
-                    
-                    # Distancia Euclidiana
                     d = np.sqrt((px-bx)**2 + (py-by)**2)
-                    
-                    # Fallback: ¿Está el balón dentro del área del jugador? (con margen)
                     is_inside = (pb[0]-20 < bx < pb[2]+20) and (pb[1]-20 < by < pb[3]+20)
                     
                     if d < min_d or is_inside:
-                        if is_inside: d = d / 2 # Dar prioridad si está físicamente "dentro"
+                        if is_inside: d = d / 2
                         if d < min_d:
                             min_d = d
                             closest_p = p
                 
                 if closest_p:
                     self.possession_votes[closest_p['id']] += 1
-                    if self.team_clf.trained:
-                        pb = closest_p['box']
-                        crop = frame[max(0,pb[1]):min(pb[3],h_orig), max(0,pb[0]):min(pb[2],w)]
-                        if crop.size > 0:
-                            tm = self.team_clf.predict(crop)
-                            self.current_team_votes[tm] += 1
-                        else:
-                            print(f"\033[0;33m⚠️ No se pudo extraer crop del jugador para clasificación de equipo.\033[0m")
-                else:
-                    print(f"\033[0;33m⚠️ No se encontró jugador cercano al balón para determinar posesión.\033[0m")
+                    pb = closest_p['box']
+                    crop = frame[max(0,pb[1]):min(pb[3],h_orig), max(0,pb[0]):min(pb[2],w)]
+                    if crop.size > 0:
+                        tm = self.team_clf.predict(crop)
+                        self.current_team_votes[tm] += 1
 
                 if in_danger_zone:
-                    self.attack_cooldown = 0 # Reset cooldown si sigue habiendo peligro
+                    self.attack_cooldown = 0
                     if not self.in_attack:
                         self.in_attack = True
                         self.attack_start_time = max(0, current_time - LEAD_IN)
@@ -379,10 +394,8 @@ class HandballProcessor:
                         print(f"⚔️ Ataque iniciado en {int(current_time)}s")
                 
                 elif self.in_attack:
-                    # Aplicar histeresis: no cerrar hasta que pase el COOLDOWN
                     self.attack_cooldown += STRIDE
                     if self.attack_cooldown > COOLDOWN_FRAMES:
-                        # Determinar ganador de la jugada
                         winner_player = f"P-{self.possession_votes.most_common(1)[0][0]}" if self.possession_votes else "Desconocido"
                         winner_team = self.current_team_votes.most_common(1)[0][0] if self.current_team_votes else "Sin_Equipo"
 
@@ -396,7 +409,7 @@ class HandballProcessor:
                         self.attack_cooldown = 0
 
             frame_idx += 1
-            if frame_idx % 100 == 0:
+            if frame_idx % 60 == 0:
                 elapsed = time.time() - start_time
                 if elapsed > 0:
                     fps_proc = frame_idx / elapsed
@@ -404,7 +417,7 @@ class HandballProcessor:
                     prog = (frame_idx / total_frames) * 100
                     GLOBAL_STATE["progress"] = round(prog, 1)
                     GLOBAL_STATE["eta_seconds"] = eta
-                    print(f"📊 {prog:.1f}% | Velocidad: {fps_proc:.1f} FPS | ETA: {eta}s")
+                    print(f"📊 {prog:.1f}% | Vel: {fps_proc:.1f} FPS | ETA: {eta}s")
 
         cap.release()
         GLOBAL_STATE["status"] = "completed"
