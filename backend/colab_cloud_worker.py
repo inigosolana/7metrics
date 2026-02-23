@@ -463,6 +463,12 @@ def get_status(): return GLOBAL_STATE
 
 @app.post("/upload-video")
 async def upload(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
+    # 🧹 Limpiar clips de sesiones anteriores para evitar mezclas
+    print(f"🧹 Limpiando espacio de trabajo para: {file.filename}")
+    if os.path.exists(OUTPUT_DIR):
+        shutil.rmtree(OUTPUT_DIR)
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    
     path = os.path.join(UPLOAD_DIR, file.filename)
     with open(path, "wb") as f: shutil.copyfileobj(file.file, f)
     GLOBAL_STATE["current_file"] = file.filename
@@ -470,6 +476,13 @@ async def upload(background_tasks: BackgroundTasks, file: UploadFile = File(...)
     GLOBAL_STATE["progress"] = 0
     background_tasks.add_task(run_pipeline, path)
     return {"status": "started", "filename": file.filename}
+
+@app.post("/reset")
+def reset_workspace():
+    if os.path.exists(OUTPUT_DIR): shutil.rmtree(OUTPUT_DIR)
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    GLOBAL_STATE.update({"status": "idle", "progress": 0, "current_file": None, "eta_seconds": 0})
+    return {"message": "Workspace cleared"}
 
 @app.get("/clips")
 def list_clips():
