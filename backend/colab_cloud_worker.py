@@ -108,7 +108,8 @@ def load_optimized_model():
 # --- CONFIGURACIÓN ---
 NGROK_AUTH_TOKEN = "38nuec0NauciUj1o70wg29N1xK2_5odXuyQSStGE6tLhuLXdq" # Tu token
 PORT = 8000
-GLOBAL_STATE = {"progress": 0, "status": "idle", "current_file": "", "eta_seconds": 0}
+TASKS = {} # Estado global por tareas: {task_id: {"status": "...", "progress": 0, "eta_seconds": 0, "clips": []}}
+GLOBAL_STATE = {"progress": 0, "status": "idle", "current_file": "", "eta_seconds": 0} # Deprecated soon
 
 BASE_DIR = os.getcwd()
 UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
@@ -202,8 +203,9 @@ class TeamClassifier:
         except: return "UNKNOWN"
 
 class HandballProcessor:
-    def __init__(self, input_path):
+    def __init__(self, input_path, task_id=None):
         self.input_path = input_path
+        self.task_id = task_id
         self.model = load_optimized_model()
         self.team_clf = TeamClassifier()
         
@@ -321,6 +323,10 @@ class HandballProcessor:
             with open(os.path.join(OUTPUT_DIR, f"{clip_id}.json"), "w") as f:
                 json.dump(metadata, f)
             
+            # Si hay una tarea asociada, añadimos el clip a su lista
+            if self.task_id and self.task_id in TASKS:
+                TASKS[self.task_id]["clips"].append(metadata)
+            
             file_size = os.path.getsize(final_file) / (1024*1024)
             print(f"🎬 Clip Listo: {clip_id} ({file_size:.1f}MB) | {team_label} | {predicted_action.upper()}")
 
@@ -333,6 +339,8 @@ class HandballProcessor:
         
         # --- FASE 1: CALIBRACIÓN DE COLORES (Detectar primero) ---
         print("\n\033[1;33m🔍 FASE 1: Calibrando colores de equipos...\033[0m")
+        if self.task_id and self.task_id in TASKS:
+            TASKS[self.task_id]["status"] = "calibrating"
         GLOBAL_STATE["status"] = "calibrating"
         
         cal_frame = 0
@@ -361,6 +369,8 @@ class HandballProcessor:
 
         # Reiniciar video para el proceso real
         cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+        if self.task_id and self.task_id in TASKS:
+            TASKS[self.task_id]["status"] = "processing"
         GLOBAL_STATE["status"] = "processing"
         print("\033[1;32m🚀 FASE 2: Iniciando análisis táctico completo...\033[0m")
         
@@ -472,17 +482,31 @@ class HandballProcessor:
                         self.attack_cooldown = 0
 
             frame_idx += 1
-            if frame_idx % 60 == 0:
+            if frame_idx % 30 == 0: # Cada segundo de video aprox con STRIDE=2
                 elapsed = time.time() - start_time
                 if elapsed > 0:
                     fps_proc = frame_idx / elapsed
-                    eta = int((total_frames - frame_idx) / fps_proc) if fps_proc > 0 else 0
+                    frames_restantes = total_frames - frame_idx
+                    eta = int(frames_restantes / fps_proc) if fps_proc > 0 else 0
                     prog = (frame_idx / total_frames) * 100
-                    GLOBAL_STATE["progress"] = round(prog, 1)
+                    
+                    # Actualizar estados
+                    prog_rounded = round(prog, 1)
+                    GLOBAL_STATE["progress"] = prog_rounded
                     GLOBAL_STATE["eta_seconds"] = eta
-                    print(f"📊 {prog:.1f}% | Vel: {fps_proc:.1f} FPS | ETA: {eta}s")
+                    
+                    if self.task_id and self.task_id in TASKS:
+                        TASKS[self.task_id]["progress"] = prog_rounded
+                        TASKS[self.task_id]["eta_seconds"] = eta
+                        
+                    print(f"📊 {prog_rounded}% | Vel: {fps_proc:.1f} FPS | ETA: {eta}s")
 
         cap.release()
+        if self.task_id and self.task_id in TASKS:
+            TASKS[self.task_id]["status"] = "completed"
+            TASKS[self.task_id]["progress"] = 100
+            TASKS[self.task_id]["eta_seconds"] = 0
+            
         GLOBAL_STATE["status"] = "completed"
         GLOBAL_STATE["progress"] = 100
         print("✅ Procesamiento finalizado.")
@@ -577,39 +601,40 @@ def get_video_clips(video_id: str = "default"):
                     print(f"Error reading JSON {f}: {e}")
     return clips_data
 
+@app.get("/api/status/{task_id}")
+def get_task_status(task_id: str):
+    return TASKS.get(task_id, {"status": "error", "message": "Tarea no encontrada"})
+
 @app.post("/api/upload")
 async def upload_video_direct(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
     """
-    Endpoint para recibir el video directamente desde el frontend React.
+    Endpoint para recibir el video directamente desde el frontend React con task_id.
     """
-    print(f"📥 Recibiendo video: {file.filename}")
+    task_id = str(uuid.uuid4())
+    print(f"📥 Recibiendo video (Task: {task_id}): {file.filename}")
     
-    # 🧹 Limpieza automática antes de una nueva subida
-    if os.path.exists(OUTPUT_DIR):
-        shutil.rmtree(OUTPUT_DIR)
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
-    
-    # Guardar archivo localmente
-    input_filename = "input_video.mp4"
-    input_path = os.path.join(UPLOAD_DIR, input_filename)
+    # 🧹 Limpieza del archivo de entrada
+    filename = f"{task_id}_{file.filename}"
+    input_path = os.path.join(UPLOAD_DIR, filename)
     
     with open(input_path, "wb") as f:
         shutil.copyfileobj(file.file, f)
     
-    # Inicializar estado y lanzar procesamiento en segundo plano
-    GLOBAL_STATE.update({
+    # Inicializar estado de la tarea
+    TASKS[task_id] = {
         "status": "processing",
         "progress": 0,
-        "current_file": file.filename,
-        "eta_seconds": 0
-    })
+        "eta_seconds": 0,
+        "clips": [],
+        "filename": file.filename
+    }
     
-    background_tasks.add_task(run_pipeline, input_path)
+    background_tasks.add_task(run_pipeline, input_path, task_id)
     
     return {
         "status": "upload_success",
         "message": "Procesamiento iniciado",
-        "filename": file.filename
+        "task_id": task_id
     }
 
 class MergeClipsRequest(BaseModel):
@@ -650,8 +675,8 @@ def merge_clips(req: MergeClipsRequest):
         
     return {"url": f"/static/clips/{merged_filename}"}
 
-def run_pipeline(path):
-    processor = HandballProcessor(path)
+def run_pipeline(path, task_id=None):
+    processor = HandballProcessor(path, task_id)
     processor.process()
 
 # --- 7. EJECUCIÓN ---

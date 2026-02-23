@@ -125,6 +125,12 @@ export const ClipEditor: React.FC = () => {
     const [uploadFile, setUploadFile] = useState<File | null>(null);
     const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
 
+    // AI Processing states
+    const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
+    const [processProgress, setProcessProgress] = useState(0);
+    const [processETA, setProcessETA] = useState(0);
+    const [processStatus, setProcessStatus] = useState<string | null>(null);
+
     // Drag and Drop State
     const [draggedIdx, setDraggedIdx] = useState<number | null>(null);
 
@@ -240,6 +246,9 @@ export const ClipEditor: React.FC = () => {
     const handleUpload = async () => {
         if (!uploadFile) return;
         setIsUploading(true);
+        setProcessProgress(0);
+        setProcessStatus("Iniciando...");
+
         try {
             const baseUrl = VideoProcessorService.API_BASE_URL;
             const base = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
@@ -254,18 +263,60 @@ export const ClipEditor: React.FC = () => {
             });
 
             if (res.ok) {
-                alert("Video subido. La IA comenzará el análisis.");
-                setUploadFile(null);
-                // Podríamos empezar a encuestar el estado aquí
+                const data = await res.json();
+                if (data.task_id) {
+                    setActiveTaskId(data.task_id);
+                    setUploadFile(null);
+                }
             } else {
                 alert("Error al subir el video.");
+                setIsUploading(false);
             }
         } catch (error) {
             console.error("Upload error:", error);
             alert("Error de conexión al subir el video.");
-        } finally {
             setIsUploading(false);
         }
+    };
+
+    // Polling Effect
+    useEffect(() => {
+        let interval: any;
+        if (activeTaskId) {
+            const baseUrl = VideoProcessorService.API_BASE_URL;
+            const base = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
+
+            interval = setInterval(async () => {
+                try {
+                    const res = await fetch(`${base}/api/status/${activeTaskId}`, {
+                        headers: { 'ngrok-skip-browser-warning': 'true' }
+                    });
+                    if (res.ok) {
+                        const data = await res.json();
+                        setProcessProgress(data.progress || 0);
+                        setProcessETA(data.eta_seconds || 0);
+                        setProcessStatus(data.status);
+
+                        if (data.status === 'completed') {
+                            clearInterval(interval);
+                            setActiveTaskId(null);
+                            setIsUploading(false);
+                            fetchClips(); // Refresh gallery
+                        }
+                    }
+                } catch (e) {
+                    console.error("Polling error:", e);
+                }
+            }, 1500);
+        }
+        return () => clearInterval(interval);
+    }, [activeTaskId]);
+
+    const formatETA = (seconds: number) => {
+        if (!seconds) return 'Calculando...';
+        const mins = Math.floor(seconds / 60);
+        const secs = seconds % 60;
+        return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
     };
 
     const uniqueActions = Array.from(new Set(clips.map(c => c.action))).sort();
@@ -349,6 +400,61 @@ export const ClipEditor: React.FC = () => {
                     </div>
                 </div>
             </div>
+
+            {/* AI PROCESSING OVERLAY */}
+            {(isUploading && activeTaskId) && (
+                <div className="absolute inset-0 z-50 bg-slate-950/90 backdrop-blur-xl flex flex-col items-center justify-center p-8 animate-fade-in text-center">
+                    <div className="max-w-md w-full space-y-8">
+                        {/* Animated Icon */}
+                        <div className="relative">
+                            <div className="absolute inset-0 bg-primary/20 blur-3xl rounded-full scale-150 animate-pulse"></div>
+                            <span className="material-symbols-outlined text-7xl text-primary animate-bounce relative z-10">smart_toy</span>
+                        </div>
+
+                        <div className="space-y-2">
+                            <h2 className="text-3xl font-black text-white uppercase tracking-tighter">Analizando Partido con IA</h2>
+                            <p className="text-white/50 text-sm font-medium uppercase tracking-widest italic">Detectando jugadas, equipos y acciones tácticas...</p>
+                        </div>
+
+                        {/* Progress Container */}
+                        <div className="space-y-4">
+                            <div className="flex justify-between items-end">
+                                <span className="text-5xl font-black text-white tabular-nums">{Math.round(processProgress)}%</span>
+                                <div className="text-right">
+                                    <p className="text-[10px] text-white/40 uppercase font-bold">Tiempo Estimado</p>
+                                    <p className="text-lg font-mono text-primary">{formatETA(processETA)}</p>
+                                </div>
+                            </div>
+
+                            <div className="h-4 w-full bg-white/5 border border-white/10 rounded-full overflow-hidden p-1">
+                                <div
+                                    className="h-full bg-gradient-to-r from-primary to-orange-400 rounded-full transition-all duration-300 relative shadow-[0_0_15px_rgba(255,87,34,0.5)]"
+                                    style={{ width: `${processProgress}%` }}
+                                >
+                                    <div className="absolute inset-0 bg-[linear-gradient(45deg,rgba(255,255,255,0.2)_25%,transparent_25%,transparent_50%,rgba(255,255,255,0.2)_50%,rgba(255,255,255,0.2)_75%,transparent_75%,transparent)] bg-[length:20px_20px] animate-[slide_1s_linear_infinite]"></div>
+                                </div>
+                            </div>
+
+                            <div className="flex justify-between items-center text-[10px] text-white/40 font-bold uppercase tracking-widest">
+                                <span className="flex items-center gap-1">
+                                    <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-ping"></span>
+                                    Servidor de Alto Rendimiento: Activo
+                                </span>
+                                <span>Estado: {processStatus?.toUpperCase() || 'PROCESANDO'}</span>
+                            </div>
+                        </div>
+
+                        {/* Status List (Visual decoration) */}
+                        <div className="grid grid-cols-3 gap-2 pt-8">
+                            {['YOLOv8 Tactics', 'LRCN Action', 'K-Means Kits'].map((tech) => (
+                                <div key={tech} className="bg-white/5 border border-white/10 rounded-lg p-2 text-[9px] text-white/60 font-medium">
+                                    {tech}
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Main Content: Left (Gallery) and Right (Cart) */}
             <div className="flex-1 flex gap-4 min-h-0">
