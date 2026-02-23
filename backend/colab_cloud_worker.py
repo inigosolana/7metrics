@@ -124,58 +124,72 @@ class TeamClassifier:
 
     def get_color_name(self, hsv):
         h, s, v = hsv
-        if s < 40: return "BLANCO/GRIS" if v > 150 else "NEGRO/OSCURO"
-        if h < 10 or h > 170: return "ROJO"
-        if 10 <= h < 25: return "NARANJA"
-        if 25 <= h < 35: return "AMARILLO"
+        # Filtrar colores muy oscuros o muy claros
+        if v < 40: return "NEGRO/OSCURO"
+        if s < 30 and v > 180: return "BLANCO"
+        
+        # Rangos específicos de balonmano (Camisetas vibrantes)
+        if (h < 15 or h > 165): return "ROJO"
+        if 15 <= h < 35: return "NARANJA/AMARILLO"
         if 35 <= h < 85: return "VERDE"
-        if 85 <= h < 130: return "AZUL"
-        if 130 <= h < 170: return "VIOLETA/ROSA"
+        if 85 <= h < 140: return "AZUL" # Rango ampliado para azul
+        if 140 <= h < 165: return "PÚRPURA/ROSA"
         return "DESCONOCIDO"
 
     def train(self, crops):
-        if len(crops) < 30: return
+        if len(crops) < 40: return
         data = []
         for crop in crops:
             try:
-                # Enfocarse solo en la parte central superior (típico pecho/camiseta)
                 h, w, _ = crop.shape
-                roi = crop[int(h*0.2):int(h*0.5), int(w*0.3):int(w*0.7)]
+                # Solo el centro del pecho para evitar brazos y fondo
+                roi = crop[int(h*0.3):int(h*0.6), int(w*0.3):int(w*0.7)]
                 hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
-                avg = np.mean(hsv, axis=(0, 1))
-                data.append(avg)
+                
+                # --- FILTRO ANT-PISTA ---
+                # Ignorar colores tipo madera/beige (H: 15-30, S: 20-100)
+                mask = cv2.inRange(hsv, (10, 30, 0), (35, 255, 255))
+                inverse_mask = cv2.bitwise_not(mask)
+                
+                # Calcular promedio solo de los píxeles que NO son pista
+                avg = cv2.mean(hsv, mask=inverse_mask)[:3]
+                if avg[1] > 30: # Asegurarnos de que hay suficiente color (saturación)
+                    data.append(avg)
             except: continue
         
-        if data:
-            self.kmeans = KMeans(n_clusters=2, n_init=10)
-            self.kmeans.fit(data)
-            self.trained = True
-            
-            # Identificar colores predominantes
-            c1, c2 = self.kmeans.cluster_centers_
-            name1 = self.get_color_name(c1)
-            name2 = self.get_color_name(c2)
-            
-            # Asegurar que no sean el mismo nombre si son parecidos
-            if name1 == name2:
-                name1 += " (Claro)" if c1[2] > c2[2] else " (Oscuro)"
-                name2 += " (Oscuro)" if c1[2] > c2[2] else " (Claro)"
+        if len(data) < 10:
+            print("⚠️ Muestras de color insuficientes tras filtrado de pista.")
+            return
 
-            self.team_names = {0: name1, 1: name2}
-            
-            print(f"\n\033[1;36m🎨 CALIBRACIÓN DE EQUIPOS COMPLETADA:\033[0m")
-            print(f"\033[1;32m   - Equipo HOME: {name1}\033[0m")
-            print(f"\033[1;34m   - Equipo AWAY: {name2}\033[0m\n")
+        self.kmeans = KMeans(n_clusters=2, n_init=15)
+        self.kmeans.fit(data)
+        self.trained = True
+        
+        c1, c2 = self.kmeans.cluster_centers_
+        name1 = self.get_color_name(c1)
+        name2 = self.get_color_name(c2)
+        
+        if name1 == name2:
+            name1 += " (E1)"
+            name2 += " (E2)"
+
+        self.team_names = {0: name1, 1: name2}
+        print(f"\n\033[1;36m🎨 CALIBRACIÓN DE EQUIPOS (Filtro Pista Activado):\033[0m")
+        print(f"\033[1;32m   - HOME: {name1} (HSV: {c1.astype(int)})\033[0m")
+        print(f"\033[1;34m   - AWAY: {name2} (HSV: {c2.astype(int)})\033[0m\n")
 
     def predict(self, crop):
         if not self.trained: return "UNKNOWN"
         try:
             h, w, _ = crop.shape
-            roi = crop[int(h*0.2):int(h*0.5), int(w*0.3):int(w*0.7)]
+            roi = crop[int(h*0.3):int(h*0.6), int(w*0.3):int(w*0.7)]
             hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
-            avg = np.mean(hsv, axis=(0, 1))
+            
+            mask = cv2.inRange(hsv, (10, 30, 0), (35, 255, 255))
+            inverse_mask = cv2.bitwise_not(mask)
+            avg = cv2.mean(hsv, mask=inverse_mask)[:3]
+            
             label = self.kmeans.predict([avg])[0]
-            # Devolvemos el nombre del color en lugar de solo HOME/AWAY para mayor claridad en logs internos
             return "HOME" if label == 0 else "AWAY"
         except: return "UNKNOWN"
 
