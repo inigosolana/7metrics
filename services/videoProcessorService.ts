@@ -168,6 +168,13 @@ export class VideoProcessorService {
 
         const durationSec = endSec - startSec;
 
+        const getFullUrl = (url: string) => {
+            if (url.startsWith('http')) return url;
+            const baseUrl = this.API_BASE_URL.endsWith('/') ? this.API_BASE_URL.slice(0, -1) : this.API_BASE_URL;
+            const relativePath = url.startsWith('/') ? url : `/${url}`;
+            return `${baseUrl}${relativePath}`;
+        };
+
         return {
             id: backendClip.path,
             startTime: this.formatSeconds(startSec),
@@ -176,8 +183,8 @@ export class VideoProcessorService {
             team: (team === 'HOME' || team === 'AWAY') ? team : 'AWAY',
             player: player.replace('_', ' '),
             actionType: action as any,
-            thumbnailUrl: backendClip.thumbnailUrl ? (backendClip.thumbnailUrl.startsWith('http') ? backendClip.thumbnailUrl : `${this.API_BASE_URL}${backendClip.thumbnailUrl}`) : '',
-            url: backendClip.url.startsWith('http') ? backendClip.url : `${this.API_BASE_URL}${backendClip.url}`
+            thumbnailUrl: backendClip.thumbnailUrl ? getFullUrl(backendClip.thumbnailUrl) : '',
+            url: getFullUrl(backendClip.url)
         };
     }
 

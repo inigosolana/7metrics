@@ -468,6 +468,13 @@ class HandballProcessor:
 app = FastAPI()
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
+@app.middleware("http")
+async def add_ngrok_header(request, call_next):
+    response = await call_next(request)
+    response.headers["ngrok-skip-browser-warning"] = "true"
+    return response
+
+# --- 5. ENDPOINTS ---
 from pydantic import BaseModel
 import uuid
 
@@ -535,8 +542,8 @@ def list_clips():
                 all_clips.append({
                     "filename": f,
                     "path": rel_path.replace(os.sep, '/'),
-                    "url": f"/download/{rel_path.replace(os.sep, '/')}?ngrok-skip-browser-warning=true",
-                    "thumbnailUrl": f"/download/{thumb_path.replace(os.sep, '/')}?ngrok-skip-browser-warning=true"
+                    "url": f"download/{rel_path.replace(os.sep, '/')}?ngrok-skip-browser-warning=true",
+                    "thumbnailUrl": f"download/{thumb_path.replace(os.sep, '/')}?ngrok-skip-browser-warning=true"
                 })
     # Sort clips by filename (which starts with action) or timestamp if we had it
     return all_clips
