@@ -439,7 +439,7 @@ def create_highlight(req: HighlightRequest):
     if os.path.exists(list_file):
         os.remove(list_file)
     
-    return {"url": f"/download_highlight/{out_file}"}
+    return {"url": f"/download_highlight/{out_file}?ngrok-skip-browser-warning=true"}
 
 @app.get("/download_highlight/{filename}")
 def download_highlight(filename: str):
@@ -468,7 +468,7 @@ def list_clips():
                 all_clips.append({
                     "filename": f,
                     "path": rel_path.replace(os.sep, '/'),
-                    "url": f"/download/{rel_path.replace(os.sep, '/')}"
+                    "url": f"/download/{rel_path.replace(os.sep, '/')}?ngrok-skip-browser-warning=true"
                 })
     return all_clips
 
