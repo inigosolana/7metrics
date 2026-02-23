@@ -122,15 +122,27 @@ class TeamClassifier:
         self.kmeans = None
         self.trained = False
 
+    def get_color_name(self, hsv):
+        h, s, v = hsv
+        if s < 40: return "BLANCO/GRIS" if v > 150 else "NEGRO/OSCURO"
+        if h < 10 or h > 170: return "ROJO"
+        if 10 <= h < 25: return "NARANJA"
+        if 25 <= h < 35: return "AMARILLO"
+        if 35 <= h < 85: return "VERDE"
+        if 85 <= h < 130: return "AZUL"
+        if 130 <= h < 170: return "VIOLETA/ROSA"
+        return "DESCONOCIDO"
+
     def train(self, crops):
         if len(crops) < 30: return
         data = []
         for crop in crops:
             try:
-                hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
-                # Muestreo del centro de la camiseta para evitar fondo
-                h, w, _ = hsv.shape
-                avg = np.mean(hsv[int(h*0.3):int(h*0.6), int(w*0.3):int(w*0.6)], axis=(0, 1))
+                # Enfocarse solo en la parte central superior (típico pecho/camiseta)
+                h, w, _ = crop.shape
+                roi = crop[int(h*0.2):int(h*0.5), int(w*0.3):int(w*0.7)]
+                hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
+                avg = np.mean(hsv, axis=(0, 1))
                 data.append(avg)
             except: continue
         
@@ -138,15 +150,32 @@ class TeamClassifier:
             self.kmeans = KMeans(n_clusters=2, n_init=10)
             self.kmeans.fit(data)
             self.trained = True
-            print("\033[1;36m🎨 Equipos identificados automáticamente (Calibración completa).\033[0m")
+            
+            # Identificar colores predominantes
+            c1, c2 = self.kmeans.cluster_centers_
+            name1 = self.get_color_name(c1)
+            name2 = self.get_color_name(c2)
+            
+            # Asegurar que no sean el mismo nombre si son parecidos
+            if name1 == name2:
+                name1 += " (Claro)" if c1[2] > c2[2] else " (Oscuro)"
+                name2 += " (Oscuro)" if c1[2] > c2[2] else " (Claro)"
+
+            self.team_names = {0: name1, 1: name2}
+            
+            print(f"\n\033[1;36m🎨 CALIBRACIÓN DE EQUIPOS COMPLETADA:\033[0m")
+            print(f"\033[1;32m   - Equipo HOME: {name1}\033[0m")
+            print(f"\033[1;34m   - Equipo AWAY: {name2}\033[0m\n")
 
     def predict(self, crop):
         if not self.trained: return "UNKNOWN"
         try:
-            hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
-            h, w, _ = hsv.shape
-            avg = np.mean(hsv[int(h*0.3):int(h*0.6), int(w*0.3):int(w*0.6)], axis=(0, 1))
+            h, w, _ = crop.shape
+            roi = crop[int(h*0.2):int(h*0.5), int(w*0.3):int(w*0.7)]
+            hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
+            avg = np.mean(hsv, axis=(0, 1))
             label = self.kmeans.predict([avg])[0]
+            # Devolvemos el nombre del color en lugar de solo HOME/AWAY para mayor claridad en logs internos
             return "HOME" if label == 0 else "AWAY"
         except: return "UNKNOWN"
 
@@ -230,7 +259,13 @@ class HandballProcessor:
         if os.path.exists(temp_file):
             os.rename(temp_file, final_file)
 
-        print(f"🎬 Clip: {team} | {player} | Acción: {predicted_action.upper()} ({final_filename})")
+        color_info = ""
+        if team == "HOME" and hasattr(self.team_clf, 'team_names'):
+            color_info = f" ({self.team_clf.team_names[0]})"
+        elif team == "AWAY" and hasattr(self.team_clf, 'team_names'):
+            color_info = f" ({self.team_clf.team_names[1]})"
+
+        print(f"🎬 Clip: {team}{color_info} | {player} | Acción: {predicted_action.upper()} ({final_filename})")
 
     def process(self):
         cap = cv2.VideoCapture(self.input_path)
