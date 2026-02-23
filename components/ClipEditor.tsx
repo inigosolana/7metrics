@@ -130,6 +130,7 @@ export const ClipEditor: React.FC = () => {
     const [processProgress, setProcessProgress] = useState(0);
     const [processETA, setProcessETA] = useState(0);
     const [processStatus, setProcessStatus] = useState<string | null>(null);
+    const [teamColors, setTeamColors] = useState<string[]>([]);
 
     // Drag and Drop State
     const [draggedIdx, setDraggedIdx] = useState<number | null>(null);
@@ -246,6 +247,8 @@ export const ClipEditor: React.FC = () => {
     const handleUpload = async () => {
         if (!uploadFile) return;
         setIsUploading(true);
+        setClips([]);
+        setSelectedIds([]);
         setProcessProgress(0);
         setProcessStatus("Iniciando...");
 
@@ -297,11 +300,20 @@ export const ClipEditor: React.FC = () => {
                         setProcessETA(data.eta_seconds || 0);
                         setProcessStatus(data.status);
 
+                        if (data.team_colors) {
+                            setTeamColors(data.team_colors);
+                        }
+
+                        if (data.clips && data.clips.length > 0) {
+                            // Actualización reactiva de clips 'al vuelo'
+                            setClips(data.clips);
+                        }
+
                         if (data.status === 'completed') {
                             clearInterval(interval);
                             setActiveTaskId(null);
                             setIsUploading(false);
-                            fetchClips(); // Refresh gallery
+                            // fetchClips(); // Ya los tenemos del polling
                         }
                     }
                 } catch (e) {
@@ -401,67 +413,10 @@ export const ClipEditor: React.FC = () => {
                 </div>
             </div>
 
-            {/* AI PROCESSING OVERLAY */}
-            {(isUploading && activeTaskId) && (
-                <div className="absolute inset-0 z-50 bg-slate-950/90 backdrop-blur-xl flex flex-col items-center justify-center p-8 animate-fade-in text-center">
-                    <div className="max-w-md w-full space-y-8">
-                        {/* Animated Icon */}
-                        <div className="relative">
-                            <div className="absolute inset-0 bg-primary/20 blur-3xl rounded-full scale-150 animate-pulse"></div>
-                            <span className="material-symbols-outlined text-7xl text-primary animate-bounce relative z-10">smart_toy</span>
-                        </div>
-
-                        <div className="space-y-2">
-                            <h2 className="text-3xl font-black text-white uppercase tracking-tighter">Analizando Partido con IA</h2>
-                            <p className="text-white/50 text-sm font-medium uppercase tracking-widest italic">Detectando jugadas, equipos y acciones tácticas...</p>
-                        </div>
-
-                        {/* Progress Container */}
-                        <div className="space-y-4">
-                            <div className="flex justify-between items-end">
-                                <span className="text-5xl font-black text-white tabular-nums">{Math.round(processProgress)}%</span>
-                                <div className="text-right">
-                                    <p className="text-[10px] text-white/40 uppercase font-bold">Tiempo Estimado</p>
-                                    <p className="text-lg font-mono text-primary">{formatETA(processETA)}</p>
-                                </div>
-                            </div>
-
-                            <div className="h-4 w-full bg-white/5 border border-white/10 rounded-full overflow-hidden p-1">
-                                <div
-                                    className="h-full bg-gradient-to-r from-primary to-orange-400 rounded-full transition-all duration-300 relative shadow-[0_0_15px_rgba(255,87,34,0.5)]"
-                                    style={{ width: `${processProgress}%` }}
-                                >
-                                    <div className="absolute inset-0 bg-[linear-gradient(45deg,rgba(255,255,255,0.2)_25%,transparent_25%,transparent_50%,rgba(255,255,255,0.2)_50%,rgba(255,255,255,0.2)_75%,transparent_75%,transparent)] bg-[length:20px_20px] animate-[slide_1s_linear_infinite]"></div>
-                                </div>
-                            </div>
-
-                            <div className="flex justify-between items-center text-[10px] text-white/40 font-bold uppercase tracking-widest">
-                                <span className="flex items-center gap-1">
-                                    <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-ping"></span>
-                                    Servidor de Alto Rendimiento: Activo
-                                </span>
-                                <span>Estado: {processStatus?.toUpperCase() || 'PROCESANDO'}</span>
-                            </div>
-                        </div>
-
-                        {/* Status List (Visual decoration) */}
-                        <div className="grid grid-cols-3 gap-2 pt-8">
-                            {['YOLOv8 Tactics', 'LRCN Action', 'K-Means Kits'].map((tech) => (
-                                <div key={tech} className="bg-white/5 border border-white/10 rounded-lg p-2 text-[9px] text-white/60 font-medium">
-                                    {tech}
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* Main Content: Left (Gallery) and Right (Cart) */}
+            {/* MAIN CONTENT AREA */}
             <div className="flex-1 flex gap-4 min-h-0">
-
                 {/* LEFT: GALLERY */}
                 <div className="flex-1 flex flex-col glass-panel rounded-xl overflow-hidden border border-white/10 shadow-xl bg-slate-900/50">
-
                     {/* Filters */}
                     <div className="flex-shrink-0 p-4 border-b border-white/5 flex gap-4 bg-black/20 items-center">
                         <div className="flex items-center gap-2">
@@ -490,24 +445,78 @@ export const ClipEditor: React.FC = () => {
                         </div>
                     </div>
 
-                    {/* Clip Grid */}
+                    {/* Clip Grid Scroll Area */}
                     <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
-                        {isLoading ? (
+
+                        {/* 🚀 AI PROCESSING HEADER (Banner mode for real-time) */}
+                        {isUploading && activeTaskId && (
+                            <div className="mb-6 glass-panel rounded-xl p-6 bg-slate-950/60 border-2 border-primary/40 relative overflow-hidden animate-fade-in shadow-2xl shadow-primary/20">
+                                <div className="absolute top-0 left-0 w-full h-1 bg-white/5">
+                                    <div
+                                        className="h-full bg-primary transition-all duration-500 shadow-[0_0_15px_#ff5722]"
+                                        style={{ width: `${processProgress}%` }}
+                                    ></div>
+                                </div>
+
+                                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+                                    <div className="flex items-center gap-5">
+                                        <div className="bg-primary/20 p-4 rounded-full animate-bounce">
+                                            <span className="material-symbols-outlined text-primary text-4xl">smart_toy</span>
+                                        </div>
+                                        <div>
+                                            <h3 className="text-2xl font-black uppercase text-white tracking-widest leading-none">Análisis en Vivo</h3>
+                                            <div className="flex items-center gap-3 mt-2">
+                                                <span className="flex h-3 w-3 rounded-full bg-green-500 animate-ping"></span>
+                                                <p className="text-[11px] text-white/60 font-black uppercase tracking-widest leading-none">IA Generando Clips tácticos</p>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex flex-wrap items-center gap-6">
+                                        {teamColors.length > 0 && (
+                                            <div className="bg-white/5 border border-white/10 rounded-xl px-4 py-3 flex flex-col gap-1">
+                                                <p className="text-[9px] text-white/40 font-black uppercase tracking-widest mb-1">Equipos Detectados</p>
+                                                <div className="flex gap-2">
+                                                    {teamColors.map(color => (
+                                                        <span key={color} className="text-[10px] font-black uppercase bg-primary/10 text-primary px-3 py-1 rounded-full border border-primary/20">
+                                                            {color}
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                        <div className="text-right p-2">
+                                            <p className="text-5xl font-black text-white tabular-nums leading-none tracking-tighter">{Math.round(processProgress)}%</p>
+                                            <p className="text-[11px] text-primary/80 font-mono mt-2 flex items-center justify-end gap-1 uppercase">
+                                                <span className="material-symbols-outlined text-[14px]">timer</span>
+                                                ETA: {formatETA(processETA)}
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="mt-4 flex items-center justify-between text-[10px] text-white/30 font-bold uppercase tracking-widest border-t border-white/5 pt-3">
+                                    <span>Servidor: Google Colab T4 Cloud</span>
+                                    <span>Acción: {processStatus?.toUpperCase() || 'BUSCANDO JUGADAS...'}</span>
+                                </div>
+                            </div>
+                        )}
+
+                        {isLoading && clips.length === 0 ? (
                             <div className="h-full flex flex-col items-center justify-center text-white/40">
-                                <span className="material-symbols-outlined text-4xl animate-spin text-primary mb-2">autorenew</span>
-                                <p className="text-sm font-bold animate-pulse">Cargando clips desde el servidor...</p>
+                                <span className="material-symbols-outlined text-6xl animate-spin text-primary/20 mb-4">progress_activity</span>
+                                <p className="text-sm font-bold animate-pulse uppercase tracking-widest">Iniciando conexión IA...</p>
                             </div>
                         ) : filteredClips.length === 0 ? (
-                            <div className="h-full flex flex-col items-center justify-center text-white/40">
-                                <span className="material-symbols-outlined text-4xl mb-2">videocam_off</span>
-                                <p className="text-sm">No hay clips que coincidan con los filtros.</p>
+                            <div className="h-full flex flex-col items-center justify-center text-white/20">
+                                <span className="material-symbols-outlined text-6xl mb-4 opacity-20">movie_off</span>
+                                <p className="text-lg font-bold uppercase tracking-widest">Esperando primer clip...</p>
                             </div>
                         ) : (
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 pr-2 pb-4">
                                 {filteredClips.map(clip => {
                                     const isSelected = selectedIds.includes(clip.id);
                                     return (
-                                        <div key={clip.id} className={`flex flex-col bg-slate-800 border-2 rounded-xl overflow-hidden group transition-all duration-300 ${isSelected ? 'border-primary shadow-[0_0_15px_rgba(255,87,34,0.3)]' : 'border-slate-700 hover:border-white/30 hover:-translate-y-1'}`}>
+                                        <div key={clip.id} className={`flex flex-col bg-slate-800 border-2 rounded-xl overflow-hidden group transition-all duration-300 ${isSelected ? 'border-primary shadow-[0_0_20px_rgba(255,87,34,0.4)]' : 'border-slate-700 hover:border-white/20 hover:-translate-y-1'}`}>
                                             <div className="relative aspect-video bg-black/80">
                                                 <SafeVideo
                                                     src={getFullUrl(clip.url)}
@@ -516,7 +525,6 @@ export const ClipEditor: React.FC = () => {
                                                     onMouseOver={e => e.currentTarget.play()}
                                                     onMouseOut={e => { e.currentTarget.pause(); e.currentTarget.currentTime = 0; }}
                                                 />
-                                                {/* Mini Badges over Video */}
                                                 <div className="absolute top-2 left-2 flex gap-1">
                                                     <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded border shadow-sm backdrop-blur-md ${getActionBadgeColor(clip.action)}`}>
                                                         {clip.action.replace('_', ' ')}
@@ -536,16 +544,16 @@ export const ClipEditor: React.FC = () => {
                                                 )}
                                             </div>
 
-                                            <div className="p-3 flex items-center justify-between bg-slate-800">
+                                            <div className="p-3 flex items-center justify-between bg-slate-800/80 border-t border-white/5">
                                                 <div className="flex flex-col overflow-hidden mr-2">
                                                     <span className="text-xs font-bold text-white truncate" title={clip.player || clip.id}>
                                                         {clip.player || clip.id}
                                                     </span>
-                                                    <span className="text-[10px] text-white/40">Origen: IA Extractor</span>
+                                                    <span className="text-[9px] text-white/30 font-bold uppercase tracking-wider mt-0.5">IA Detection</span>
                                                 </div>
                                                 <button
                                                     onClick={() => toggleClip(clip.id)}
-                                                    className={`flex-shrink-0 p-1.5 rounded-lg border transition-colors flex items-center justify-center ${isSelected
+                                                    className={`flex-shrink-0 p-1.5 rounded-lg border transition-all flex items-center justify-center ${isSelected
                                                         ? 'bg-red-500/20 text-red-400 border-red-500/40 hover:bg-red-500 hover:text-white'
                                                         : 'bg-primary/10 text-primary border-primary/30 hover:bg-primary hover:text-white'
                                                         }`}
@@ -579,8 +587,8 @@ export const ClipEditor: React.FC = () => {
                         {selectedClipsObjects.length === 0 ? (
                             <div className="h-full flex flex-col items-center justify-center text-white/30 text-center px-4">
                                 <span className="material-symbols-outlined text-5xl mb-3 opacity-50">movie_edit</span>
-                                <p className="text-sm">No has añadido clips.</p>
-                                <p className="text-xs mt-1 opacity-70">Usa el botón '+' en la galería para armar tu Highlight.</p>
+                                <p className="text-sm font-bold uppercase tracking-widest opacity-40">Timeline Vacía</p>
+                                <p className="text-[10px] mt-2 opacity-50 italic">Selecciona jugadas del partido para crear tu resumen personalizado.</p>
                             </div>
                         ) : (
                             selectedClipsObjects.map((clip, idx) => (
@@ -595,12 +603,12 @@ export const ClipEditor: React.FC = () => {
                                     <div className="flex-shrink-0 w-6 flex items-center justify-center cursor-move text-white/20 group-hover:text-white/50">
                                         <span className="material-symbols-outlined text-sm">drag_indicator</span>
                                     </div>
-                                    <div className="flex-shrink-0 w-16 aspect-video bg-black rounded overflow-hidden">
+                                    <div className="flex-shrink-0 w-16 aspect-video bg-black rounded overflow-hidden shadow-inner">
                                         <SafeImage src={getFullUrl(clip.thumbnailUrl || '')} alt="thumb" className="w-full h-full object-cover opacity-80" />
                                     </div>
                                     <div className="flex-1 flex flex-col justify-center min-w-0">
-                                        <span className="text-[10px] text-primary font-bold uppercase truncate">{clip.action}</span>
-                                        <span className="text-xs text-white truncate">{clip.player || clip.id}</span>
+                                        <span className="text-[10px] text-primary font-bold uppercase truncate tracking-tighter">{clip.action}</span>
+                                        <span className="text-xs text-white/90 font-medium truncate">{clip.player || clip.id}</span>
                                     </div>
                                     <button
                                         onClick={() => removeClip(clip.id)}
@@ -620,17 +628,17 @@ export const ClipEditor: React.FC = () => {
                                 href={downloadUrl}
                                 target="_blank" rel="noreferrer"
                                 download="Highlight_Final.mp4"
-                                className="w-full bg-green-500 hover:bg-green-400 text-white font-black py-3 rounded-lg flex items-center justify-center gap-2 shadow-[0_0_15px_rgba(34,197,94,0.4)] transition-all animate-pulse-slight text-sm uppercase"
+                                className="w-full bg-green-500 hover:bg-green-400 text-white font-black py-4 rounded-xl flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(34,197,94,0.4)] transition-all animate-pulse-slight text-sm uppercase tracking-widest"
                             >
-                                <span className="material-symbols-outlined">download</span>
-                                Descargar Highlight
+                                <span className="material-symbols-outlined font-bold">download</span>
+                                Descargar Summary
                             </a>
                         ) : (
                             <button
                                 onClick={generateHighlight}
                                 disabled={selectedIds.length === 0 || isGenerating}
-                                className={`w-full font-black py-4 rounded-lg flex items-center justify-center gap-2 shadow-lg transition-all text-sm uppercase tracking-wider ${selectedIds.length === 0
-                                    ? 'bg-slate-700 text-white/30 cursor-not-allowed'
+                                className={`w-full font-black py-4 rounded-xl flex items-center justify-center gap-2 shadow-lg transition-all text-sm uppercase tracking-widest ${selectedIds.length === 0
+                                    ? 'bg-slate-800 text-white/20 cursor-not-allowed border border-white/5'
                                     : isGenerating
                                         ? 'bg-primary/80 text-white cursor-wait opacity-80'
                                         : 'bg-primary hover:bg-primary/90 text-white shadow-primary/30 hover:shadow-primary/50'
@@ -639,18 +647,18 @@ export const ClipEditor: React.FC = () => {
                                 {isGenerating ? (
                                     <>
                                         <span className="material-symbols-outlined animate-spin text-lg">progress_activity</span>
-                                        PROCESANDO FUSIÓN...
+                                        UNIENDO CLIPS...
                                     </>
                                 ) : (
                                     <>
-                                        <span className="material-symbols-outlined text-lg">merge</span>
-                                        Generar Highlight
+                                        <span className="material-symbols-outlined text-lg font-bold">movie_edit</span>
+                                        Generar Highlights
                                     </>
                                 )}
                             </button>
                         )}
                         {!downloadUrl && !isGenerating && selectedIds.length > 0 && (
-                            <p className="text-[10px] text-center text-white/40">* La fusión de {selectedIds.length} clips tomará unos segundos.</p>
+                            <p className="text-[9px] text-center text-white/30 font-bold uppercase tracking-wider">* Fusión procesada por el motor FFmpeg Cloud.</p>
                         )}
                     </div>
                 </div>

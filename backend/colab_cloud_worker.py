@@ -8,6 +8,7 @@ import cv2
 import numpy as np
 import torch
 import threading
+import uuid
 from collections import Counter, deque
 from concurrent.futures import ThreadPoolExecutor
 
@@ -87,6 +88,20 @@ OUTPUT_DIR = os.path.join(STATIC_DIR, "clips")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 os.makedirs(STATIC_DIR, exist_ok=True)
 os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+# 🧹 LIMPIEZA INICIAL (Para evitar clips de sesiones anteriores)
+print("🧹 Limpiando espacio de trabajo para nueva sesión...")
+for d in [UPLOAD_DIR, OUTPUT_DIR]:
+    if os.path.exists(d):
+        for f in os.listdir(d):
+            path = os.path.join(d, f)
+            try:
+                if os.path.isfile(path) or os.path.islink(path):
+                    os.unlink(path)
+                elif os.path.is_dir(path):
+                    shutil.rmtree(path)
+            except Exception as e:
+                print(f"Error al limpiar {path}: {e}")
 
 # --- CLASES DE PROCESAMIENTO ---
 
