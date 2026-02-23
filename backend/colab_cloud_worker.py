@@ -9,6 +9,7 @@ import numpy as np
 import torch
 import threading
 from collections import Counter, deque
+from concurrent.futures import ThreadPoolExecutor
 
 # --- 1. INSTALACIÓN DE DEPENDENCIAS ---
 def install_dependencies():
@@ -215,11 +216,15 @@ class HandballProcessor:
         self.possession_votes = Counter()
         self.current_team_votes = Counter()
         self.attack_cooldown = 0 # Para evitar jitter (histeresis)
+        
+        # NUEVO: Crear un pool limitado a 2 hilos para no saturar Colab
+        self.export_pool = ThreadPoolExecutor(max_workers=2)
 
     def export_segment_async(self, start, end, team, player):
         # Evitar clips extremadamente cortos (menos de 2 segundos de acción real)
         if (end - start) < 3: return 
-        threading.Thread(target=self._export_ffmpeg, args=(start, end, team, player)).start()
+        # NUEVO: Usar el pool en lugar de hilos sin control
+        self.export_pool.submit(self._export_ffmpeg, start, end, team, player)
 
     def _export_ffmpeg(self, start, end, team, player):
         import uuid
@@ -240,6 +245,8 @@ class HandballProcessor:
             '-c:a', 'aac', '-b:a', '128k',
             '-pix_fmt', 'yuv420p',
             '-movflags', '+faststart',
+            '-async', '1',
+            '-vsync', '1',
             '-loglevel', 'error', 
             temp_file
         ]
