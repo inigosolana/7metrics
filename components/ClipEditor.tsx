@@ -53,7 +53,7 @@ const SafeImage: React.FC<{ src: string; alt?: string; className?: string }> = (
     return <img src={blobUrl} alt={alt} className={className} />;
 };
 
-const SafeVideo: React.FC<{ src: string; poster?: string; onMouseOver?: (e: any) => void; onMouseOut?: (e: any) => void; className?: string }> = ({ src, poster, onMouseOver, onMouseOut, className }) => {
+const SafeVideo: React.FC<{ src: string; poster?: string; controls?: boolean; muted?: boolean; autoPlay?: boolean; onMouseOver?: (e: any) => void; onMouseOut?: (e: any) => void; className?: string }> = ({ src, poster, controls = false, muted = true, autoPlay = false, onMouseOver, onMouseOut, className }) => {
     const [blobUrl, setBlobUrl] = useState<string>('');
     const [posterBlobUrl, setPosterBlobUrl] = useState<string>('');
     const [loading, setLoading] = useState(true);
@@ -106,9 +106,11 @@ const SafeVideo: React.FC<{ src: string; poster?: string; onMouseOver?: (e: any)
         <video
             src={blobUrl}
             poster={posterBlobUrl}
-            muted
+            muted={muted}
             loop
             playsInline
+            controls={controls}
+            autoPlay={autoPlay}
             className={className}
             onMouseOver={onMouseOver}
             onMouseOut={onMouseOut}
@@ -124,6 +126,7 @@ export const ClipEditor: React.FC = () => {
     const [isUploading, setIsUploading] = useState(false);
     const [uploadFile, setUploadFile] = useState<File | null>(null);
     const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
+    const [modalClip, setModalClip] = useState<HighlightClip | null>(null);
 
     // AI Processing states
     const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
@@ -516,49 +519,69 @@ export const ClipEditor: React.FC = () => {
                                 {filteredClips.map(clip => {
                                     const isSelected = selectedIds.includes(clip.id);
                                     return (
-                                        <div key={clip.id} className={`flex flex-col bg-slate-800 border-2 rounded-xl overflow-hidden group transition-all duration-300 ${isSelected ? 'border-primary shadow-[0_0_20px_rgba(255,87,34,0.4)]' : 'border-slate-700 hover:border-white/20 hover:-translate-y-1'}`}>
-                                            <div className="relative aspect-video bg-black/80">
+                                        <div key={clip.id} className={`flex flex-col bg-slate-900/60 border-2 rounded-2xl overflow-hidden group transition-all duration-500 hover:shadow-2xl hover:shadow-primary/10 ${isSelected ? 'border-primary shadow-[0_0_25px_rgba(255,87,34,0.3)] bg-slate-800/80' : 'border-white/5 hover:border-white/20 hover:-translate-y-2 cursor-default'}`}>
+                                            <div className="relative aspect-video bg-black overflow-hidden group-hover:shadow-inner">
                                                 <SafeVideo
                                                     src={getFullUrl(clip.url)}
                                                     poster={getFullUrl(clip.thumbnailUrl || '')}
-                                                    className="w-full h-full object-cover"
+                                                    className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
                                                     onMouseOver={e => e.currentTarget.play()}
                                                     onMouseOut={e => { e.currentTarget.pause(); e.currentTarget.currentTime = 0; }}
                                                 />
-                                                <div className="absolute top-2 left-2 flex gap-1">
-                                                    <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded border shadow-sm backdrop-blur-md ${getActionBadgeColor(clip.action)}`}>
+
+                                                {/* Overlay Gradient on Hover */}
+                                                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
+
+                                                {/* Action Pins */}
+                                                <div className="absolute top-3 left-3 flex flex-col gap-2 z-10">
+                                                    <span className={`text-[10px] font-black uppercase px-3 py-1 rounded-full border shadow-2xl backdrop-blur-xl ${getActionBadgeColor(clip.action)}`}>
                                                         {clip.action.replace('_', ' ')}
                                                     </span>
                                                 </div>
-                                                <div className="absolute top-2 right-2">
-                                                    <span className="text-[9px] font-bold uppercase px-2 py-0.5 rounded border border-white/20 bg-black/60 text-white shadow-sm backdrop-blur-md">
+
+                                                <div className="absolute top-3 right-3 z-10">
+                                                    <span className="text-[10px] font-black uppercase px-3 py-1 rounded-full border border-white/20 bg-black/40 text-white/90 shadow-2xl backdrop-blur-xl">
                                                         {clip.team}
                                                     </span>
                                                 </div>
 
+                                                {/* Center Play Button for Modal */}
+                                                <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-300 scale-75 group-hover:scale-100 z-20">
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); setModalClip(clip); }}
+                                                        className="w-14 h-14 bg-primary text-white rounded-full flex items-center justify-center shadow-2xl shadow-primary/50 hover:bg-white hover:text-primary transition-all group/play"
+                                                    >
+                                                        <span className="material-symbols-outlined text-3xl font-bold group-hover/play:scale-110 transition">play_arrow</span>
+                                                    </button>
+                                                </div>
+
                                                 {isSelected && (
-                                                    <div className="absolute inset-0 bg-primary/20 flex flex-col items-center justify-center backdrop-blur-[2px]">
-                                                        <span className="material-symbols-outlined text-white text-5xl drop-shadow-lg">check_circle</span>
-                                                        <span className="text-white text-xs font-bold mt-1 shadow-black drop-shadow-md">Seleccionado</span>
+                                                    <div className="absolute inset-0 bg-primary/10 flex flex-col items-center justify-center backdrop-blur-[1px] z-10 border-4 border-primary rounded-xl">
+                                                        <div className="bg-primary text-white p-2 rounded-full shadow-lg animate-bounce">
+                                                            <span className="material-symbols-outlined text-3xl">check</span>
+                                                        </div>
                                                     </div>
                                                 )}
                                             </div>
 
-                                            <div className="p-3 flex items-center justify-between bg-slate-800/80 border-t border-white/5">
-                                                <div className="flex flex-col overflow-hidden mr-2">
-                                                    <span className="text-xs font-bold text-white truncate" title={clip.player || clip.id}>
-                                                        {clip.player || clip.id}
+                                            <div className="p-4 flex items-center justify-between bg-white/[0.02] border-t border-white/5">
+                                                <div className="flex flex-col min-w-0 pr-4">
+                                                    <span className="text-sm font-black text-white/90 truncate tracking-tight uppercase" title={clip.player || clip.id}>
+                                                        {clip.player?.replace('_', ' ') || 'Jugador Desconocido'}
                                                     </span>
-                                                    <span className="text-[9px] text-white/30 font-bold uppercase tracking-wider mt-0.5">IA Detection</span>
+                                                    <div className="flex items-center gap-1.5 mt-0.5">
+                                                        <span className="flex h-1.5 w-1.5 rounded-full bg-primary/50 animate-pulse"></span>
+                                                        <span className="text-[9px] text-white/30 font-black uppercase tracking-widest">IA Analizada</span>
+                                                    </div>
                                                 </div>
                                                 <button
                                                     onClick={() => toggleClip(clip.id)}
-                                                    className={`flex-shrink-0 p-1.5 rounded-lg border transition-all flex items-center justify-center ${isSelected
-                                                        ? 'bg-red-500/20 text-red-400 border-red-500/40 hover:bg-red-500 hover:text-white'
-                                                        : 'bg-primary/10 text-primary border-primary/30 hover:bg-primary hover:text-white'
+                                                    className={`flex-shrink-0 w-10 h-10 rounded-xl border transition-all flex items-center justify-center ${isSelected
+                                                        ? 'bg-rose-500/20 text-rose-400 border-rose-500/40 hover:bg-rose-500 hover:text-white hover:scale-105 active:scale-95 shadow-lg shadow-rose-500/10'
+                                                        : 'bg-primary/20 text-primary border-primary/30 hover:bg-primary hover:text-white hover:scale-105 active:scale-95 shadow-lg shadow-primary/10'
                                                         }`}
                                                 >
-                                                    <span className="material-symbols-outlined text-[20px]">
+                                                    <span className="material-symbols-outlined text-2xl font-black">
                                                         {isSelected ? 'remove' : 'add'}
                                                     </span>
                                                 </button>
@@ -663,6 +686,54 @@ export const ClipEditor: React.FC = () => {
                     </div>
                 </div>
             </div>
+            {/* VIDEO MODAL OVERLAY */}
+            {modalClip && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 md:p-10 animate-fade-in">
+                    <div className="absolute inset-0 bg-black/95 backdrop-blur-xl" onClick={() => setModalClip(null)}></div>
+
+                    <div className="relative w-full max-w-5xl aspect-video bg-black rounded-3xl overflow-hidden border border-white/10 shadow-[0_0_100px_rgba(0,0,0,1)] group/modal">
+                        <SafeVideo
+                            src={getFullUrl(modalClip.url)}
+                            controls={true}
+                            muted={false}
+                            autoPlay={true}
+                            className="w-full h-full object-contain"
+                        />
+
+                        {/* Close Button */}
+                        <button
+                            onClick={() => setModalClip(null)}
+                            className="absolute top-6 right-6 w-12 h-12 bg-white/10 hover:bg-white/20 text-white rounded-full flex items-center justify-center border border-white/10 backdrop-blur-xl transition-all hover:scale-110 z-[101]"
+                        >
+                            <span className="material-symbols-outlined text-2xl font-bold">close</span>
+                        </button>
+
+                        {/* Info Overlay inside Modal */}
+                        <div className="absolute bottom-10 left-10 right-10 flex justify-between items-end pointer-events-none opacity-0 group-hover/modal:opacity-100 transition-opacity duration-500">
+                            <div className="bg-black/60 p-6 rounded-2xl border border-white/10 backdrop-blur-xl">
+                                <h3 className="text-3xl font-black text-white uppercase tracking-tighter mb-2">{modalClip.player?.replace('_', ' ') || 'Jugador'}</h3>
+                                <div className="flex gap-3">
+                                    <span className={`text-xs font-black uppercase px-4 py-1.5 rounded-full border ${getActionBadgeColor(modalClip.action)}`}>
+                                        {modalClip.action}
+                                    </span>
+                                    <span className="text-xs font-black uppercase px-4 py-1.5 rounded-full border border-white/20 bg-white/5 text-white/90">
+                                        {modalClip.team}
+                                    </span>
+                                </div>
+                            </div>
+                            <button
+                                className="bg-primary text-white font-black px-8 py-4 rounded-2xl flex items-center gap-3 shadow-2xl pointer-events-auto hover:scale-105 active:scale-95 transition-all text-sm uppercase tracking-widest"
+                                onClick={() => { toggleClip(modalClip.id); setModalClip(null); }}
+                            >
+                                <span className="material-symbols-outlined text-xl">
+                                    {selectedIds.includes(modalClip.id) ? 'remove_circle' : 'add_circle'}
+                                </span>
+                                {selectedIds.includes(modalClip.id) ? 'Quitar de Timeline' : 'Añadir a Timeline'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
