@@ -490,7 +490,13 @@ class HandballProcessor:
 # --- 4. API SERVIDOR ---
 
 app = FastAPI()
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 @app.middleware("http")
@@ -571,6 +577,41 @@ def get_video_clips(video_id: str = "default"):
                     print(f"Error reading JSON {f}: {e}")
     return clips_data
 
+@app.post("/api/upload")
+async def upload_video_direct(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
+    """
+    Endpoint para recibir el video directamente desde el frontend React.
+    """
+    print(f"📥 Recibiendo video: {file.filename}")
+    
+    # 🧹 Limpieza automática antes de una nueva subida
+    if os.path.exists(OUTPUT_DIR):
+        shutil.rmtree(OUTPUT_DIR)
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    
+    # Guardar archivo localmente
+    input_filename = "input_video.mp4"
+    input_path = os.path.join(UPLOAD_DIR, input_filename)
+    
+    with open(input_path, "wb") as f:
+        shutil.copyfileobj(file.file, f)
+    
+    # Inicializar estado y lanzar procesamiento en segundo plano
+    GLOBAL_STATE.update({
+        "status": "processing",
+        "progress": 0,
+        "current_file": file.filename,
+        "eta_seconds": 0
+    })
+    
+    background_tasks.add_task(run_pipeline, input_path)
+    
+    return {
+        "status": "upload_success",
+        "message": "Procesamiento iniciado",
+        "filename": file.filename
+    }
+
 class MergeClipsRequest(BaseModel):
     clips: list[str] # Lista de URLs o IDs de clips
 
@@ -585,13 +626,22 @@ def merge_clips(req: MergeClipsRequest):
     with open(list_file, "w") as f:
         for clip in req.clips:
             clip_filename = clip
-            if clip.startswith("/static/clips/"):
-                clip_filename = clip.replace("/static/clips/", "")
-            elif not clip.endswith(".mp4"):
-                clip_filename = f"{clip}.mp4"
+            # Limpiar URLs si vienen completas desde el frontend
+            if "/static/clips/" in clip:
+                clip_filename = clip.split("/static/clips/")[-1]
+            
+            # Quitar parámetros de cache si existen (ej ?ngrok...)
+            if "?" in clip_filename:
+                clip_filename = clip_filename.split("?")[0]
+
+            if not clip_filename.endswith(".mp4") and "." not in clip_filename:
+                clip_filename = f"{clip_filename}.mp4"
                 
             abs_path = os.path.join(OUTPUT_DIR, clip_filename)
-            f.write(f"file '{abs_path}'\n")
+            if os.path.exists(abs_path):
+                f.write(f"file '{abs_path}'\n")
+            else:
+                print(f"⚠️ Clip no encontrado para fusionar: {abs_path}")
             
     # Importante: para que ffmpeg pueda leer la ruta absoluta, la entrecomillamos simple.
     subprocess.run(['ffmpeg', '-y', '-f', 'concat', '-safe', '0', '-i', list_file, '-c', 'copy', merged_path])
