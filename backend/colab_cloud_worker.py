@@ -226,12 +226,16 @@ class HandballProcessor:
         # 1. Guardamos un archivo temporal primero
         temp_file = os.path.join(folder, f"temp_{int(start)}_{int(end)}.mp4")
         
+        # 1. Exportamos el clip re-codificando para máxima compatibilidad con navegadores (H.264)
         cmd = [
             'ffmpeg', '-y', 
             '-ss', f"{start:.2f}", 
             '-to', f"{end:.2f}",
             '-i', self.input_path, 
-            '-c', 'copy', 
+            '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '28',
+            '-c:a', 'aac', '-b:a', '128k',
+            '-pix_fmt', 'yuv420p', # Muy importante para compatibilidad QuickTime/Chrome
+            '-movflags', '+faststart', # Permite previsualización mientras descarga
             '-loglevel', 'error', 
             temp_file
         ]
@@ -277,14 +281,16 @@ class HandballProcessor:
         if os.path.exists(temp_file):
             os.rename(temp_file, final_file)
             
-            # Generar Thumbnail (vía FFmpeg) - Primer segundo para que no sea negro
+            # Generar Thumbnail (vía FFmpeg) - Ir al segundo 1 para evitar frames negros al inicio
             thumb_filename = final_filename.replace('.mp4', '.jpg')
             thumb_file = os.path.join(folder, thumb_filename)
             subprocess.run([
-                'ffmpeg', '-y', '-i', final_file, 
-                '-ss', '00:00:01', '-vframes', '1', 
-                '-q:v', '2', '-loglevel', 'error', thumb_file
+                'ffmpeg', '-y', '-ss', '1.0', '-i', final_file, 
+                '-vframes', '1', '-q:v', '5', '-loglevel', 'error', thumb_file
             ])
+            
+            file_size = os.path.getsize(final_file) / (1024*1024)
+            print(f"🎬 Clip Listo: {team} ({file_size:.1f}MB) | JPG: {'OK' if os.path.exists(thumb_file) else 'FALLÓ'}")
 
         color_info = ""
         if team == "HOME" and hasattr(self.team_clf, 'team_names'):
@@ -310,9 +316,9 @@ class HandballProcessor:
             ret, frame = cap.read()
             if not ret: break
             
-            if cal_frame % 15 == 0: # Saltamos frames para ir rápido
+            if cal_frame % 10 == 0: # Muestreo más frecuente
                 small = cv2.resize(frame, (640, 384))
-                results = self.model.predict(small, verbose=False, imgsz=640, conf=0.4)
+                results = self.model.predict(small, verbose=False, imgsz=640, conf=0.20) # Menos confianza para detectar más personas
                 if results[0].boxes is not None:
                     boxes = results[0].boxes.xyxy.cpu().numpy()
                     cls = results[0].boxes.cls.cpu().numpy()
@@ -542,7 +548,12 @@ def download(team: str, player: str, filename: str):
         return JSONResponse({"error": "File not found"}, status_code=404)
     
     media_type = "video/mp4" if filename.endswith(".mp4") else "image/jpeg"
-    return FileResponse(path, media_type=media_type)
+    headers = {
+        "Content-Disposition": f"inline; filename={filename}",
+        "ngrok-skip-browser-warning": "true",
+        "Cache-Control": "public, max-age=3600"
+    }
+    return FileResponse(path, media_type=media_type, headers=headers)
 
 def run_pipeline(path):
     processor = HandballProcessor(path)
