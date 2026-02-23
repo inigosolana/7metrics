@@ -1,465 +1,388 @@
-import React, { useState } from 'react';
-import { VideoClip } from '../types';
+import React, { useState, useEffect } from 'react';
 import { VideoProcessorService } from '../services/videoProcessorService';
 
+interface HighlightClip {
+    id: string;
+    url: string;
+    action: string;
+    team: string;
+    thumbnailUrl?: string;
+    player?: string;
+}
+
 export const ClipEditor: React.FC = () => {
-    const [status, setStatus] = useState<'IDLE' | 'PROCESSING' | 'READY'>('IDLE');
-    const [progress, setProgress] = useState(0);
-    const [progressMsg, setProgressMsg] = useState("Iniciando carga...");
-    const [clips, setClips] = useState<VideoClip[]>([]);
-    const [selectedClip, setSelectedClip] = useState<VideoClip | null>(null);
-    const [analysis, setAnalysis] = useState<string | null>(null);
-    const [isAnalyzing, setIsAnalyzing] = useState(false);
+    const [clips, setClips] = useState<HighlightClip[]>([]);
+    const [selectedIds, setSelectedIds] = useState<string[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [isGenerating, setIsGenerating] = useState(false);
+    const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
 
-    // Filters
-    const [selectedTeam, setSelectedTeam] = useState<'ALL' | 'HOME' | 'AWAY'>('ALL');
-    const [selectedPlayer, setSelectedPlayer] = useState<string>('ALL');
-    const [selectedActions, setSelectedActions] = useState<string[]>(['GOAL', 'JUMP-SHOT', 'PASSING', 'DEFENCE', 'DRIBBLING', 'SHOT']);
+    // Drag and Drop State
+    const [draggedIdx, setDraggedIdx] = useState<number | null>(null);
 
-    const [isGeneratingHighlight, setIsGeneratingHighlight] = useState(false);
-    const [selectedClips, setSelectedClips] = useState<string[]>([]);
-
-    const toggleClipSelection = (clipId: string) => {
-        setSelectedClips(prev =>
-            prev.includes(clipId)
-                ? prev.filter(id => id !== clipId)
-                : [...prev, clipId]
-        );
+    const onDragStart = (idx: number) => {
+        setDraggedIdx(idx);
     };
 
-    const handleSelectAll = () => setSelectedClips(filteredClips.map(c => c.id));
-    const handleClearSelection = () => setSelectedClips([]);
+    const onDragOver = (e: React.DragEvent) => {
+        e.preventDefault();
+    };
 
-    const handleCreateHighlight = async () => {
-        if (selectedClips.length === 0) {
-            alert("Por favor, selecciona al menos un clip para crear el video.");
-            return;
+    const onDrop = (idx: number) => {
+        if (draggedIdx === null) return;
+        const newIds = [...selectedIds];
+        const draggedId = newIds[draggedIdx];
+        newIds.splice(draggedIdx, 1);
+        newIds.splice(idx, 0, draggedId);
+        setSelectedIds(newIds);
+        setDraggedIdx(null);
+    };
+
+    // Filters
+    const [actionFilter, setActionFilter] = useState<string>('ALL');
+    const [teamFilter, setTeamFilter] = useState<string>('ALL');
+
+    useEffect(() => {
+        fetchClips();
+    }, []);
+
+    const fetchClips = async () => {
+        setIsLoading(true);
+        try {
+            const baseUrl = VideoProcessorService.API_BASE_URL;
+            // Quitamos la barra final de baseUrl si la tiene
+            const base = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
+            const res = await fetch(`${base}/api/clips/default`, {
+                headers: { 'ngrok-skip-browser-warning': 'true' }
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setClips(data);
+            } else {
+                throw new Error("Failed to load from backend");
+            }
+        } catch (e) {
+            console.warn("Using mock data due to fetch error:", e);
+            setClips([
+                { id: "clip_mock_1", url: "https://www.w3schools.com/html/mov_bbb.mp4", action: "GOAL", team: "Equipo Local", player: "M. Hansen" },
+                { id: "clip_mock_2", url: "https://www.w3schools.com/html/mov_bbb.mp4", action: "JUMP-SHOT", team: "Equipo Visitante", player: "S. Sagosen" },
+                { id: "clip_mock_3", url: "https://www.w3schools.com/html/mov_bbb.mp4", action: "PASSING", team: "Equipo Local", player: "D. Mem" },
+                { id: "clip_mock_4", url: "https://www.w3schools.com/html/mov_bbb.mp4", action: "DEFENCE", team: "Equipo Visitante", player: "A. Landin" },
+            ]);
+        } finally {
+            setIsLoading(false);
         }
+    };
 
-        setIsGeneratingHighlight(true);
-        setProgressMsg("Uniendo clips seleccionados en el servidor...");
+    const getFullUrl = (url: string) => {
+        if (!url) return '';
+        if (url.startsWith('http')) return url;
+        const baseUrl = VideoProcessorService.API_BASE_URL;
+        const base = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
+        const relative = url.startsWith('/') ? url : `/${url}`;
+        return `${base}${relative}`;
+    };
+
+    const toggleClip = (id: string) => {
+        setSelectedIds(prev =>
+            prev.includes(id) ? prev.filter(cId => cId !== id) : [...prev, id]
+        );
+        // Reseteamos el enlace de descarga si cambiamos la selección
+        if (downloadUrl) setDownloadUrl(null);
+    };
+
+    const removeClip = (id: string) => {
+        setSelectedIds(prev => prev.filter(cId => cId !== id));
+        if (downloadUrl) setDownloadUrl(null);
+    };
+
+    const generateHighlight = async () => {
+        if (selectedIds.length === 0) return;
+        setIsGenerating(true);
+        setDownloadUrl(null);
 
         try {
-            // Mandamos SOLO los clips seleccionados al backend
-            const response = await fetch(`${VideoProcessorService.API_BASE_URL}/generate-highlight`, {
+            const baseUrl = VideoProcessorService.API_BASE_URL;
+            const base = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
+
+            // Enviamos las URLs completas al backend para el merging
+            const urlsToMerge = selectedClipsObjects.map(c => c.url);
+            const res = await fetch(`${base}/api/merge-clips`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'ngrok-skip-browser-warning': 'true'
                 },
-                body: JSON.stringify({ clips: selectedClips })
+                body: JSON.stringify({ clips: urlsToMerge })
             });
 
-            if (response.ok) {
-                const data = await response.json();
-                const downloadUrl = `${VideoProcessorService.API_BASE_URL}${data.url}`;
-
-                const link = document.createElement('a');
-                link.href = downloadUrl;
-                link.setAttribute('download', `Mi_Highlight_Personalizado.mp4`);
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-
-                setSelectedClips([]);
-                alert("¡Highlight generado y descargado con éxito!");
+            if (res.ok) {
+                const data = await res.json();
+                setDownloadUrl(getFullUrl(data.url));
+            } else {
+                alert("Error al intentar generar el highlight.");
             }
         } catch (error) {
             console.error("Error uniendo clips:", error);
-            alert("Hubo un error al generar el Video.");
+            alert("Hubo un problema de conexión al generar el Highlight.");
         } finally {
-            setIsGeneratingHighlight(false);
+            setIsGenerating(false);
         }
     };
 
-    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (file) {
-            setStatus('PROCESSING');
-            setProgress(0);
-
-            try {
-                // Call our new "Backend" service
-                // Real progress callback from backend
-                const processedClips = await VideoProcessorService.processFullMatch(
-                    file,
-                    { targetActions: selectedActions },
-                    (backendProgress, msg) => {
-                        setProgress(backendProgress);
-                        if (msg) setProgressMsg(msg);
-                    },
-                    (liveClips) => {
-                        // Live update clips!
-                        setClips(liveClips);
-                        if (status !== 'READY') setStatus('READY');
-                    }
-                );
-
-                setProgress(100);
-                setClips(processedClips);
-                setStatus('READY');
-            } catch (error) {
-                console.error("Processing failed", error);
-                setStatus('IDLE');
-            }
-        }
-    };
-
-    const toggleAction = (action: string) => {
-        if (selectedActions.includes(action)) {
-            setSelectedActions(selectedActions.filter(a => a !== action));
-        } else {
-            setSelectedActions([...selectedActions, action]);
-        }
-    };
-
-    const handleClipAnalysis = async (clip: VideoClip) => {
-        setSelectedClip(clip);
-        setIsAnalyzing(true);
-        setAnalysis(null);
-        try {
-            const result = await VideoProcessorService.generateTacticalDescription(clip);
-            setAnalysis(result);
-        } catch (e) {
-            setAnalysis("Failed to analyze clip. Please check your AI connection.");
-        } finally {
-            setIsAnalyzing(false);
-        }
-    };
+    const uniqueActions = Array.from(new Set(clips.map(c => c.action))).sort();
+    const uniqueTeams = Array.from(new Set(clips.map(c => c.team))).sort();
 
     const filteredClips = clips.filter(clip => {
-        const matchTeam = selectedTeam === 'ALL' || clip.team === selectedTeam;
-        const matchPlayer = selectedPlayer === 'ALL' || clip.player === selectedPlayer;
-        const matchAction = selectedActions.includes(clip.actionType);
-        return matchTeam && matchPlayer && matchAction;
+        const mAction = actionFilter === 'ALL' || clip.action === actionFilter;
+        const mTeam = teamFilter === 'ALL' || clip.team === teamFilter;
+        return mAction && mTeam;
     });
 
-    const getActionColor = (action: string) => {
-        switch (action) {
-            case 'GOAL': return 'text-neon-green bg-neon-green/10 border-neon-green/20';
-            case 'JUMP-SHOT': return 'text-purple-400 bg-purple-400/10 border-purple-400/20';
-            case 'PASSING': return 'text-blue-400 bg-blue-400/10 border-blue-400/20';
-            case 'DEFENCE': return 'text-red-400 bg-red-400/10 border-red-400/20';
-            case 'DRIBBLING': return 'text-orange-400 bg-orange-400/10 border-orange-400/20';
-            case 'SHOT': return 'text-yellow-400 bg-yellow-400/10 border-yellow-400/20';
-            default: return 'text-white/60 bg-white/5 border-white/10';
-        }
-    };
+    const selectedClipsObjects = selectedIds
+        .map(id => clips.find(c => c.id === id))
+        .filter(Boolean) as HighlightClip[];
 
-    const handleDownload = (clip: VideoClip) => {
-        if (!clip.url) {
-            alert(`Downloading mock clip ${clip.id}.mp4`);
-            return;
-        }
-        const link = document.createElement('a');
-        link.href = clip.url;
-        link.setAttribute('download', `${clip.player}_${clip.actionType}.mp4`);
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-    };
-
-    const handleBatchDownload = () => {
-        alert(`Downloading ${filteredClips.length} clips... En producción esto generaría un ZIP en el servidor.`);
-        filteredClips.forEach((clip, index) => {
-            setTimeout(() => handleDownload(clip), index * 500);
-        });
+    const getActionBadgeColor = (action: string) => {
+        const act = action.toUpperCase();
+        if (act.includes('GOAL')) return 'bg-neon-green/20 text-neon-green border-neon-green/30';
+        if (act.includes('DEFENCE')) return 'bg-red-500/20 text-red-500 border-red-500/30';
+        if (act.includes('PASS')) return 'bg-blue-500/20 text-blue-500 border-blue-500/30';
+        if (act.includes('SHOT')) return 'bg-orange-500/20 text-orange-500 border-orange-500/30';
+        return 'bg-white/10 text-white/80 border-white/20';
     };
 
     return (
-        <div className="p-4 lg:p-8 space-y-6 max-w-[1600px] mx-auto w-full animate-slide-in h-[calc(100vh-100px)] flex flex-col">
-            {/* Header */}
-            <div className="flex-shrink-0 flex items-center justify-between glass-panel p-6 rounded-2xl border-l-4 border-l-primary bg-gradient-to-r from-primary/10 to-transparent">
+        <div className="p-4 lg:p-6 space-y-4 max-w-[1600px] mx-auto w-full h-[calc(100vh-80px)] flex flex-col animate-slide-in text-white">
+
+            {/* Header / Top Bar */}
+            <div className="flex-shrink-0 flex items-center justify-between glass-panel p-4 rounded-xl border-b-2 border-primary/50 bg-gradient-to-r from-primary/10 to-transparent">
                 <div>
-                    <h2 className="text-xl font-bold text-white flex items-center gap-3">
-                        <span className="material-symbols-outlined text-primary text-2xl">content_cut</span>
-                        AI Clip Auto-Slicer
+                    <h2 className="text-xl font-black text-white flex items-center gap-2 uppercase tracking-wide">
+                        <span className="material-symbols-outlined text-primary text-2xl">movie_filter</span>
+                        Highlights Studio
                     </h2>
-                    <p className="text-[#cbad90] text-sm mt-1">AI-powered backend processes the match and extracts key moments with tactical context.</p>
+                    <p className="text-white/50 text-xs mt-1">Crea tu carrete de mejores jugadas arrastrando y uniendo clips.</p>
                 </div>
-                <div className="flex gap-4 items-center">
-                    <div className="flex flex-col gap-1">
-                        <p className="text-[10px] text-white/40 font-bold uppercase">Backend IA URL</p>
+
+                <div className="flex items-center gap-4">
+                    <button onClick={fetchClips} disabled={isLoading} className="text-white/50 hover:text-white transition-colors duration-200" title="Refrescar Clips">
+                        <span className={`material-symbols-outlined ${isLoading ? 'animate-spin' : ''}`}>refresh</span>
+                    </button>
+                    <div className="flex flex-col">
+                        <span className="text-[10px] text-white/40 uppercase font-bold">API Backend</span>
                         <input
-                            type="text"
-                            placeholder="http://localhost:8000"
-                            className="bg-black/40 border border-white/10 rounded-lg px-3 py-1.5 text-xs text-primary font-mono outline-none focus:border-primary w-64"
+                            title="Backend API"
+                            className="bg-black/50 border border-white/10 rounded px-2 py-1 text-xs font-mono text-primary w-48 outline-none focus:border-primary"
                             defaultValue={VideoProcessorService.API_BASE_URL}
                             onChange={(e) => { VideoProcessorService.API_BASE_URL = e.target.value; }}
                         />
                     </div>
-                    <a href="/docs/Colab_AI_Server_Setup.md" target="_blank" className="flex items-center gap-2 px-4 py-2 bg-primary/20 hover:bg-primary/30 rounded-lg text-xs font-bold text-primary transition-colors border border-primary/20 h-fit mt-4">
-                        <span className="material-symbols-outlined text-sm">rocket_launch</span>
-                        Abrir en Colab
-                    </a>
                 </div>
             </div>
 
-            {status === 'IDLE' && (
-                <div className="flex-1 glass-panel p-12 rounded-2xl border-dashed border-2 border-white/20 flex flex-col items-center justify-center text-center">
-                    <div className="bg-primary/20 p-6 rounded-full mb-6">
-                        <span className="material-symbols-outlined text-6xl text-primary">movie</span>
+            {/* Main Content: Left (Gallery) and Right (Cart) */}
+            <div className="flex-1 flex gap-4 min-h-0">
+
+                {/* LEFT: GALLERY */}
+                <div className="flex-1 flex flex-col glass-panel rounded-xl overflow-hidden border border-white/10 shadow-xl bg-slate-900/50">
+
+                    {/* Filters */}
+                    <div className="flex-shrink-0 p-4 border-b border-white/5 flex gap-4 bg-black/20 items-center">
+                        <div className="flex items-center gap-2">
+                            <span className="material-symbols-outlined text-white/40 text-sm">filter_list</span>
+                            <span className="text-xs font-bold text-white/60 uppercase">Filtros:</span>
+                        </div>
+                        <select
+                            className="bg-slate-800 text-xs text-white border border-white/10 rounded px-3 py-1.5 outline-none focus:border-primary cursor-pointer hover:bg-slate-700 transition"
+                            value={actionFilter}
+                            onChange={(e) => setActionFilter(e.target.value)}
+                        >
+                            <option value="ALL">Todas las Acciones</option>
+                            {uniqueActions.map(act => <option key={act} value={act}>{act}</option>)}
+                        </select>
+
+                        <select
+                            className="bg-slate-800 text-xs text-white border border-white/10 rounded px-3 py-1.5 outline-none focus:border-primary cursor-pointer hover:bg-slate-700 transition"
+                            value={teamFilter}
+                            onChange={(e) => setTeamFilter(e.target.value)}
+                        >
+                            <option value="ALL">Todos los Equipos</option>
+                            {uniqueTeams.map(tm => <option key={tm} value={tm}>{tm}</option>)}
+                        </select>
+                        <div className="ml-auto text-xs text-primary font-bold">
+                            {filteredClips.length} Clips Disponibles
+                        </div>
                     </div>
-                    <h3 className="text-2xl font-bold text-white mb-2">Upload Match Video</h3>
-                    <p className="text-white/40 text-sm mb-6 max-w-sm">The processor will apply the 40x20m mapping and Re-ID logic defined in the manual.</p>
-                    <label className="cursor-pointer bg-primary hover:bg-primary/80 text-white font-bold py-3 px-8 rounded-xl transition-all shadow-lg shadow-primary/20">
-                        Select Full Match (.mp4, .mkv)
-                        <input type="file" className="hidden" accept="video/*" onChange={handleFileUpload} />
-                    </label>
-                </div>
-            )}
 
-            {status === 'PROCESSING' && clips.length === 0 && (
-                <div className="flex-1 glass-panel p-12 rounded-2xl flex flex-col items-center justify-center">
-                    <div className="w-full max-w-md space-y-4">
-                        <div className="flex justify-between text-sm font-bold">
-                            <span className="text-white">{progressMsg}</span>
-                            <span className="text-primary">{Math.round(progress)}%</span>
-                        </div>
-                        <div className="w-full bg-white/10 h-2 rounded-full overflow-hidden">
-                            <div className="bg-primary h-full transition-all duration-200" style={{ width: `${progress}%` }}></div>
-                        </div>
-                        <div className="flex flex-col gap-2 mt-6">
-                            <p className="text-[10px] text-center text-white/40 animate-pulse">Running Homography Transform...</p>
-                            <p className="text-[10px] text-center text-[#cbad90] font-mono">Status: Calibrating 6m and 9m lines...</p>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {(status === 'READY' || (status === 'PROCESSING' && clips.length > 0)) && (
-                <div className="flex-1 flex flex-col gap-6 min-h-0">
-                    {status === 'PROCESSING' && (
-                        <div className="glass-panel p-4 rounded-xl border-l-4 border-l-primary bg-primary/5 flex items-center justify-between">
-                            <div className="flex items-center gap-4 flex-1">
-                                <div className="w-48 bg-white/10 h-1.5 rounded-full overflow-hidden">
-                                    <div className="bg-primary h-full transition-all duration-200" style={{ width: `${progress}%` }}></div>
-                                </div>
-                                <span className="text-[10px] font-bold text-white/60 uppercase">{progressMsg}</span>
+                    {/* Clip Grid */}
+                    <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
+                        {isLoading ? (
+                            <div className="h-full flex flex-col items-center justify-center text-white/40">
+                                <span className="material-symbols-outlined text-4xl animate-spin text-primary mb-2">autorenew</span>
+                                <p className="text-sm font-bold animate-pulse">Cargando clips desde el servidor...</p>
                             </div>
-                            <span className="text-[10px] font-mono text-primary animate-pulse flex items-center gap-2">
-                                <span className="w-1.5 h-1.5 rounded-full bg-primary animate-ping"></span>
-                                IA DETECTANDO CLIPS EN TIEMPO REAL...
-                            </span>
-                        </div>
-                    )}
-                    <div className="flex-1 flex gap-6 min-h-0">
-                        {/* Sidebar Filters */}
-                        <div className="w-72 flex-shrink-0 glass-panel p-4 rounded-xl overflow-y-auto flex flex-col gap-6">
-                            <div>
-                                <h3 className="text-xs font-bold text-[#cbad90] uppercase tracking-widest mb-3">Team Filter</h3>
-                                <div className="flex p-1 bg-black/40 rounded-lg">
-                                    {['ALL', 'HOME', 'AWAY'].map(t => (
-                                        <button
-                                            key={t}
-                                            onClick={() => setSelectedTeam(t as any)}
-                                            className={`flex-1 py-1.5 text-xs font-bold rounded ${selectedTeam === t ? 'bg-primary text-white shadow' : 'text-white/40 hover:text-white'}`}
-                                        >
-                                            {t}
-                                        </button>
-                                    ))}
-                                </div>
+                        ) : filteredClips.length === 0 ? (
+                            <div className="h-full flex flex-col items-center justify-center text-white/40">
+                                <span className="material-symbols-outlined text-4xl mb-2">videocam_off</span>
+                                <p className="text-sm">No hay clips que coincidan con los filtros.</p>
                             </div>
-
-                            <div>
-                                <h3 className="text-xs font-bold text-[#cbad90] uppercase tracking-widest mb-3">Player</h3>
-                                <select
-                                    value={selectedPlayer}
-                                    onChange={(e) => setSelectedPlayer(e.target.value)}
-                                    className="w-full bg-black/40 border border-white/10 text-white text-xs rounded-lg p-2.5 outline-none focus:border-primary"
-                                >
-                                    <option value="ALL">All Players</option>
-                                    {Array.from(new Set(clips.map(c => c.player))).sort().map(player => (
-                                        <option key={player} value={player}>{player}</option>
-                                    ))}
-                                </select>
-                            </div>
-
-                            <div>
-                                <div className="flex justify-between items-center mb-3">
-                                    <h3 className="text-xs font-bold text-[#cbad90] uppercase tracking-widest">Action Type</h3>
-                                    <button onClick={() => setSelectedActions([])} className="text-[10px] text-white/40 hover:text-white">Clear</button>
-                                </div>
-                                <div className="space-y-2">
-                                    {['GOAL', 'JUMP-SHOT', 'PASSING', 'DEFENCE', 'DRIBBLING', 'SHOT'].map(action => (
-                                        <label key={action} className="flex items-center gap-2 cursor-pointer group">
-                                            <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${selectedActions.includes(action) ? 'bg-primary border-primary' : 'border-white/20 bg-transparent'}`}>
-                                                {selectedActions.includes(action) && <span className="material-symbols-outlined text-white text-[10px]">check</span>}
-                                            </div>
-                                            <input type="checkbox" className="hidden" checked={selectedActions.includes(action)} onChange={() => toggleAction(action)} />
-                                            <span className={`text-xs ${selectedActions.includes(action) ? 'text-white' : 'text-white/50 group-hover:text-white'}`}>{action.replace('_', ' ')}</span>
-                                        </label>
-                                    ))}
-                                </div>
-                            </div>
-
-                            <div className="mt-auto pt-4 border-t border-white/10 space-y-3">
-                                <div className="flex justify-between items-center px-1">
-                                    <span className="text-xs text-white/60">Seleccionados: <strong className="text-primary">{selectedClips.length}</strong></span>
-                                    <div className="flex gap-2">
-                                        <button onClick={handleSelectAll} className="text-[10px] text-white/40 hover:text-white">Todos</button>
-                                        <button onClick={handleClearSelection} className="text-[10px] text-white/40 hover:text-white">Ninguno</button>
-                                    </div>
-                                </div>
-
-                                <button
-                                    onClick={handleCreateHighlight}
-                                    disabled={isGeneratingHighlight || selectedClips.length === 0}
-                                    className="w-full bg-primary hover:bg-primary/80 text-white py-3 rounded-lg text-sm font-bold flex items-center justify-center gap-2 shadow-lg shadow-primary/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                                >
-                                    {isGeneratingHighlight ? (
-                                        <span className="material-symbols-outlined text-lg animate-spin">sync</span>
-                                    ) : (
-                                        <span className="material-symbols-outlined text-lg">movie_edit</span>
-                                    )}
-                                    {isGeneratingHighlight ? 'Creando Video...' : `Unir Selección (${selectedClips.length})`}
-                                </button>
-                            </div>
-                        </div>
-
-                        {/* Results Grid */}
-                        <div className="flex-1 glass-panel p-4 rounded-xl overflow-hidden flex flex-col">
-                            <div className="flex justify-between items-center mb-4 pb-2 border-b border-white/5">
-                                <h3 className="font-bold text-white">{filteredClips.length} Clips Found</h3>
-                                <div className="flex gap-2">
-                                    <span className="text-xs text-white/40">Sort by:</span>
-                                    <span className="text-xs font-bold text-white cursor-pointer">Time</span>
-                                </div>
-                            </div>
-
-                            <div className="flex-1 overflow-y-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 content-start pr-2">
-                                {filteredClips.map((clip) => {
-                                    const isSelected = selectedClips.includes(clip.id);
-
+                        ) : (
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 pr-2 pb-4">
+                                {filteredClips.map(clip => {
+                                    const isSelected = selectedIds.includes(clip.id);
                                     return (
-                                        <div
-                                            key={clip.id}
-                                            className={`bg-black/40 rounded-lg overflow-hidden border transition-all group ${isSelected ? 'border-primary ring-2 ring-primary/50' : 'border-white/5 hover:border-primary/50'
-                                                }`}
-                                        >
-                                            <div
-                                                className="relative aspect-video bg-black cursor-pointer"
-                                                onClick={() => handleClipAnalysis(clip)}
-                                            >
-                                                {/* CHECKBOX DE SELECCIÓN DE CLIP */}
-                                                <div
-                                                    onClick={(e) => { e.stopPropagation(); toggleClipSelection(clip.id); }}
-                                                    className="absolute top-2 left-2 z-10 cursor-pointer bg-black/60 p-1.5 rounded hover:bg-black"
-                                                >
-                                                    <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${isSelected ? 'bg-primary border-primary' : 'border-white/50 bg-transparent'
-                                                        }`}>
-                                                        {isSelected && <span className="material-symbols-outlined text-white text-[14px]">check</span>}
-                                                    </div>
+                                        <div key={clip.id} className={`flex flex-col bg-slate-800 border-2 rounded-xl overflow-hidden group transition-all duration-300 ${isSelected ? 'border-primary shadow-[0_0_15px_rgba(255,87,34,0.3)]' : 'border-slate-700 hover:border-white/30 hover:-translate-y-1'}`}>
+                                            <div className="relative aspect-video bg-black/80">
+                                                <video
+                                                    src={getFullUrl(clip.url)}
+                                                    poster={getFullUrl(clip.thumbnailUrl || '')}
+                                                    muted
+                                                    loop
+                                                    playsInline
+                                                    className="w-full h-full object-cover"
+                                                    onMouseOver={e => e.currentTarget.play()}
+                                                    onMouseOut={e => { e.currentTarget.pause(); e.currentTarget.currentTime = 0; }}
+                                                />
+                                                {/* Mini Badges over Video */}
+                                                <div className="absolute top-2 left-2 flex gap-1">
+                                                    <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded border shadow-sm backdrop-blur-md ${getActionBadgeColor(clip.action)}`}>
+                                                        {clip.action.replace('_', ' ')}
+                                                    </span>
+                                                </div>
+                                                <div className="absolute top-2 right-2">
+                                                    <span className="text-[9px] font-bold uppercase px-2 py-0.5 rounded border border-white/20 bg-black/60 text-white shadow-sm backdrop-blur-md">
+                                                        {clip.team}
+                                                    </span>
                                                 </div>
 
-                                                <video
-                                                    src={clip.url}
-                                                    poster={clip.thumbnailUrl}
-                                                    className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity"
-                                                    muted
-                                                    playsInline
-                                                    loop
-                                                    preload="metadata"
-                                                    onMouseOver={(e) => e.currentTarget.play()}
-                                                    onMouseOut={(e) => { e.currentTarget.pause(); e.currentTarget.currentTime = 0; }}
-                                                />
-                                                <div className="absolute top-2 right-2 bg-black/80 text-white text-[10px] font-mono px-1.5 py-0.5 rounded pointer-events-none">
-                                                    {clip.duration}
-                                                </div>
-                                                <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/40 pointer-events-none">
-                                                    <span className="material-symbols-outlined text-4xl text-white">play_circle</span>
-                                                </div>
+                                                {isSelected && (
+                                                    <div className="absolute inset-0 bg-primary/20 flex flex-col items-center justify-center backdrop-blur-[2px]">
+                                                        <span className="material-symbols-outlined text-white text-5xl drop-shadow-lg">check_circle</span>
+                                                        <span className="text-white text-xs font-bold mt-1 shadow-black drop-shadow-md">Seleccionado</span>
+                                                    </div>
+                                                )}
                                             </div>
-                                            <div className="p-3">
-                                                <div className="flex justify-between items-start mb-2">
-                                                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${getActionColor(clip.actionType)}`}>
-                                                        {clip.actionType.replace('_', ' ')}
+
+                                            <div className="p-3 flex items-center justify-between bg-slate-800">
+                                                <div className="flex flex-col overflow-hidden mr-2">
+                                                    <span className="text-xs font-bold text-white truncate" title={clip.player || clip.id}>
+                                                        {clip.player || clip.id}
                                                     </span>
-                                                    <span className="text-[10px] text-white/40 font-mono">{clip.startTime}</span>
+                                                    <span className="text-[10px] text-white/40">Origen: IA Extractor</span>
                                                 </div>
-                                                <h4 className="text-sm font-bold text-white truncate">{clip.player}</h4>
-                                                <div className="flex justify-between items-center mt-3">
-                                                    <button
-                                                        onClick={() => handleClipAnalysis(clip)}
-                                                        className="text-[10px] font-bold text-primary hover:text-white transition-colors flex items-center gap-1"
-                                                    >
-                                                        <span className="material-symbols-outlined text-xs">analytics</span>
-                                                        AI ANALYSIS
-                                                    </button>
-                                                    <button
-                                                        onClick={() => handleDownload(clip)}
-                                                        className="text-white/40 hover:text-white hover:bg-white/10 p-1.5 rounded transition-colors"
-                                                    >
-                                                        <span className="material-symbols-outlined text-lg">download</span>
-                                                    </button>
-                                                </div>
+                                                <button
+                                                    onClick={() => toggleClip(clip.id)}
+                                                    className={`flex-shrink-0 p-1.5 rounded-lg border transition-colors flex items-center justify-center ${isSelected
+                                                        ? 'bg-red-500/20 text-red-400 border-red-500/40 hover:bg-red-500 hover:text-white'
+                                                        : 'bg-primary/10 text-primary border-primary/30 hover:bg-primary hover:text-white'
+                                                        }`}
+                                                >
+                                                    <span className="material-symbols-outlined text-[20px]">
+                                                        {isSelected ? 'remove' : 'add'}
+                                                    </span>
+                                                </button>
                                             </div>
                                         </div>
                                     );
                                 })}
                             </div>
-                        </div>
-
-                        {/* Analysis Modal Side Overlay */}
-                        {selectedClip && (
-                            <div className="w-96 flex-shrink-0 glass-panel border-l border-white/20 flex flex-col animate-slide-in-right">
-                                <div className="p-4 border-b border-white/10 flex justify-between items-center bg-primary/10">
-                                    <h3 className="font-bold text-white flex items-center gap-2">
-                                        <span className="material-symbols-outlined text-primary">smart_toy</span>
-                                        Tactical Detail
-                                    </h3>
-                                    <button onClick={() => setSelectedClip(null)} className="text-white/40 hover:text-white">
-                                        <span className="material-symbols-outlined">close</span>
-                                    </button>
-                                </div>
-                                <div className="p-6 overflow-y-auto space-y-6">
-                                    <div className="aspect-video rounded-lg overflow-hidden border border-white/10 bg-black">
-                                        <div className="aspect-video rounded-lg overflow-hidden border border-white/10 bg-black">
-                                            <video src={selectedClip.url} poster={selectedClip.thumbnailUrl} className="w-full h-full object-contain" controls autoPlay loop />
-                                        </div>
-                                    </div>
-                                    <div className="space-y-1">
-                                        <p className="text-[10px] text-[#cbad90] font-bold uppercase tracking-widest">Metadata</p>
-                                        <div className="grid grid-cols-2 gap-2">
-                                            <div className="bg-white/5 p-2 rounded border border-white/5">
-                                                <p className="text-[8px] text-white/40 uppercase">Action</p>
-                                                <p className="text-xs font-bold text-white">{selectedClip.actionType}</p>
-                                            </div>
-                                            <div className="bg-white/5 p-2 rounded border border-white/5">
-                                                <p className="text-[8px] text-white/40 uppercase">Timestamp</p>
-                                                <p className="text-xs font-bold text-white font-mono">{selectedClip.startTime}</p>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <div className="space-y-3">
-                                        <p className="text-[10px] text-[#cbad90] font-bold uppercase tracking-widest flex items-center gap-2">
-                                            Coach AI Insight
-                                            {isAnalyzing && <span className="w-1.5 h-1.5 rounded-full bg-primary animate-ping"></span>}
-                                        </p>
-                                        <div className="bg-white/5 p-4 rounded-xl border border-white/10 relative overflow-hidden">
-                                            {isAnalyzing ? (
-                                                <div className="space-y-2 py-4">
-                                                    <div className="h-3 w-3/4 bg-white/10 rounded animate-pulse"></div>
-                                                    <div className="h-3 w-full bg-white/10 rounded animate-pulse"></div>
-                                                    <div className="h-3 w-5/6 bg-white/10 rounded animate-pulse"></div>
-                                                </div>
-                                            ) : (
-                                                <p className="text-xs text-white/70 leading-relaxed italic">
-                                                    "{analysis}"
-                                                </p>
-                                            )}
-                                            <div className="absolute top-0 right-0 p-2 opacity-10">
-                                                <span className="material-symbols-outlined text-4xl">format_quote</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
                         )}
                     </div>
                 </div>
-            )}
+
+                {/* RIGHT: TIMELINE / CART */}
+                <div className="w-80 flex-shrink-0 flex flex-col glass-panel rounded-xl overflow-hidden border border-white/10 shadow-xl bg-slate-900/80">
+                    <div className="p-4 border-b border-white/10 bg-black/30 flex items-center justify-between">
+                        <h3 className="text-sm font-black uppercase text-[#cbad90] tracking-wider flex items-center gap-2">
+                            <span className="material-symbols-outlined text-lg">view_timeline</span>
+                            Línea de Tiempo
+                        </h3>
+                        <span className="bg-primary text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
+                            {selectedIds.length}
+                        </span>
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto p-3 space-y-2 custom-scrollbar">
+                        {selectedClipsObjects.length === 0 ? (
+                            <div className="h-full flex flex-col items-center justify-center text-white/30 text-center px-4">
+                                <span className="material-symbols-outlined text-5xl mb-3 opacity-50">movie_edit</span>
+                                <p className="text-sm">No has añadido clips.</p>
+                                <p className="text-xs mt-1 opacity-70">Usa el botón '+' en la galería para armar tu Highlight.</p>
+                            </div>
+                        ) : (
+                            selectedClipsObjects.map((clip, idx) => (
+                                <div
+                                    key={`cart-${clip.id}-${idx}`}
+                                    draggable
+                                    onDragStart={() => onDragStart(idx)}
+                                    onDragOver={onDragOver}
+                                    onDrop={() => onDrop(idx)}
+                                    className={`flex gap-2 items-stretch bg-black/40 rounded-lg p-2 border transition-colors group ${draggedIdx === idx ? 'opacity-50 border-primary' : 'border-white/5 hover:border-white/10'}`}
+                                >
+                                    <div className="flex-shrink-0 w-6 flex items-center justify-center cursor-move text-white/20 group-hover:text-white/50">
+                                        <span className="material-symbols-outlined text-sm">drag_indicator</span>
+                                    </div>
+                                    <div className="flex-shrink-0 w-16 aspect-video bg-black rounded overflow-hidden">
+                                        <img src={getFullUrl(clip.thumbnailUrl || '')} alt="thumb" className="w-full h-full object-cover opacity-80" />
+                                    </div>
+                                    <div className="flex-1 flex flex-col justify-center min-w-0">
+                                        <span className="text-[10px] text-primary font-bold uppercase truncate">{clip.action}</span>
+                                        <span className="text-xs text-white truncate">{clip.player || clip.id}</span>
+                                    </div>
+                                    <button
+                                        onClick={() => removeClip(clip.id)}
+                                        className="w-8 flex items-center justify-center text-white/30 hover:text-red-400 hover:bg-red-400/10 rounded transition-colors"
+                                    >
+                                        <span className="material-symbols-outlined text-sm">close</span>
+                                    </button>
+                                </div>
+                            ))
+                        )}
+                    </div>
+
+                    {/* Bottom Action Area */}
+                    <div className="p-4 border-t border-white/10 bg-black/40 flex flex-col gap-3">
+                        {downloadUrl && !isGenerating ? (
+                            <a
+                                href={downloadUrl}
+                                target="_blank" rel="noreferrer"
+                                download="Highlight_Final.mp4"
+                                className="w-full bg-green-500 hover:bg-green-400 text-white font-black py-3 rounded-lg flex items-center justify-center gap-2 shadow-[0_0_15px_rgba(34,197,94,0.4)] transition-all animate-pulse-slight text-sm uppercase"
+                            >
+                                <span className="material-symbols-outlined">download</span>
+                                Descargar Highlight
+                            </a>
+                        ) : (
+                            <button
+                                onClick={generateHighlight}
+                                disabled={selectedIds.length === 0 || isGenerating}
+                                className={`w-full font-black py-4 rounded-lg flex items-center justify-center gap-2 shadow-lg transition-all text-sm uppercase tracking-wider ${selectedIds.length === 0
+                                    ? 'bg-slate-700 text-white/30 cursor-not-allowed'
+                                    : isGenerating
+                                        ? 'bg-primary/80 text-white cursor-wait opacity-80'
+                                        : 'bg-primary hover:bg-primary/90 text-white shadow-primary/30 hover:shadow-primary/50'
+                                    }`}
+                            >
+                                {isGenerating ? (
+                                    <>
+                                        <span className="material-symbols-outlined animate-spin text-lg">progress_activity</span>
+                                        PROCESANDO FUSIÓN...
+                                    </>
+                                ) : (
+                                    <>
+                                        <span className="material-symbols-outlined text-lg">merge</span>
+                                        Generar Highlight
+                                    </>
+                                )}
+                            </button>
+                        )}
+                        {!downloadUrl && !isGenerating && selectedIds.length > 0 && (
+                            <p className="text-[10px] text-center text-white/40">* La fusión de {selectedIds.length} clips tomará unos segundos.</p>
+                        )}
+                    </div>
+                </div>
+            </div>
         </div>
     );
 };

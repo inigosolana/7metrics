@@ -26,6 +26,7 @@ try:
     from fastapi import FastAPI, UploadFile, File, BackgroundTasks
     from fastapi.responses import JSONResponse, FileResponse
     from fastapi.middleware.cors import CORSMiddleware
+    from fastapi.staticfiles import StaticFiles
     from pyngrok import ngrok
     import uvicorn
     from ultralytics import YOLO
@@ -33,10 +34,10 @@ try:
     import nest_asyncio
 except ImportError:
     install_dependencies()
-    # Re-importar tras instalación
     from fastapi import FastAPI, UploadFile, File, BackgroundTasks
     from fastapi.responses import JSONResponse, FileResponse
     from fastapi.middleware.cors import CORSMiddleware
+    from fastapi.staticfiles import StaticFiles
     from pyngrok import ngrok
     import uvicorn
     from ultralytics import YOLO
@@ -110,9 +111,11 @@ GLOBAL_STATE = {"progress": 0, "status": "idle", "current_file": "", "eta_second
 
 BASE_DIR = os.getcwd()
 UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
-OUTPUT_DIR = os.path.join(BASE_DIR, "clips")
+STATIC_DIR = os.path.join(BASE_DIR, "static")
+OUTPUT_DIR = os.path.join(STATIC_DIR, "clips")
 
 os.makedirs(UPLOAD_DIR, exist_ok=True)
+os.makedirs(STATIC_DIR, exist_ok=True)
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 # --- CLASES DE PROCESAMIENTO ---
@@ -219,12 +222,13 @@ class HandballProcessor:
         threading.Thread(target=self._export_ffmpeg, args=(start, end, team, player)).start()
 
     def _export_ffmpeg(self, start, end, team, player):
-        timestamp = int(start)
-        folder = os.path.join(OUTPUT_DIR, team, player)
-        os.makedirs(folder, exist_ok=True)
-
+        import uuid
+        import json
+        
+        clip_id = f"clip_{uuid.uuid4().hex[:6]}"
+        
         # 1. Guardamos un archivo temporal primero
-        temp_file = os.path.join(folder, f"temp_{int(start)}_{int(end)}.mp4")
+        temp_file = os.path.join(OUTPUT_DIR, f"temp_{clip_id}.mp4")
         
         # 1. Exportamos el clip re-codificando para máxima compatibilidad con navegadores (H.264)
         cmd = [
@@ -234,8 +238,8 @@ class HandballProcessor:
             '-i', self.input_path, 
             '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '28',
             '-c:a', 'aac', '-b:a', '128k',
-            '-pix_fmt', 'yuv420p', # Muy importante para compatibilidad QuickTime/Chrome
-            '-movflags', '+faststart', # Permite previsualización mientras descarga
+            '-pix_fmt', 'yuv420p',
+            '-movflags', '+faststart',
             '-loglevel', 'error', 
             temp_file
         ]
@@ -273,32 +277,45 @@ class HandballProcessor:
             except Exception as e:
                 print(f"Error en predicción de acción: {e}")
 
-        # 3. Renombramos el archivo final incluyendo la acción predicha
-        # Ej: "jump-shot_120_135.mp4"
-        final_filename = f"{predicted_action}_{int(start)}_{int(end)}.mp4"
-        final_file = os.path.join(folder, final_filename)
+        # 3. Renombramos el archivo final y guardamos metadatos
+        final_filename = f"{clip_id}.mp4"
+        final_file = os.path.join(OUTPUT_DIR, final_filename)
+        
+        team_label = "Desconocido"
+        if team == "HOME":
+            team_label = "Equipo Local"
+            if hasattr(self.team_clf, 'team_names'):
+                team_label += f" ({self.team_clf.team_names[0]})"
+        elif team == "AWAY":
+            team_label = "Equipo Visitante"
+            if hasattr(self.team_clf, 'team_names'):
+                team_label += f" ({self.team_clf.team_names[1]})"
         
         if os.path.exists(temp_file):
             os.rename(temp_file, final_file)
             
-            # Generar Thumbnail (vía FFmpeg) - Ir al segundo 1 para evitar frames negros al inicio
+            # Generar Thumbnail
             thumb_filename = final_filename.replace('.mp4', '.jpg')
-            thumb_file = os.path.join(folder, thumb_filename)
+            thumb_file = os.path.join(OUTPUT_DIR, thumb_filename)
             subprocess.run([
                 'ffmpeg', '-y', '-ss', '1.0', '-i', final_file, 
                 '-vframes', '1', '-q:v', '5', '-loglevel', 'error', thumb_file
             ])
             
+            # Guardar metadatos JSON
+            metadata = {
+                "id": clip_id,
+                "url": f"/static/clips/{final_filename}",
+                "action": predicted_action,
+                "team": team_label,
+                "player": player,
+                "thumbnailUrl": f"/static/clips/{thumb_filename}"
+            }
+            with open(os.path.join(OUTPUT_DIR, f"{clip_id}.json"), "w") as f:
+                json.dump(metadata, f)
+            
             file_size = os.path.getsize(final_file) / (1024*1024)
-            print(f"🎬 Clip Listo: {team} ({file_size:.1f}MB) | JPG: {'OK' if os.path.exists(thumb_file) else 'FALLÓ'}")
-
-        color_info = ""
-        if team == "HOME" and hasattr(self.team_clf, 'team_names'):
-            color_info = f" ({self.team_clf.team_names[0]})"
-        elif team == "AWAY" and hasattr(self.team_clf, 'team_names'):
-            color_info = f" ({self.team_clf.team_names[1]})"
-
-        print(f"🎬 Clip: {team}{color_info} | {player} | Acción: {predicted_action.upper()} ({final_filename})")
+            print(f"🎬 Clip Listo: {clip_id} ({file_size:.1f}MB) | {team_label} | {predicted_action.upper()}")
 
     def process(self):
         cap = cv2.VideoCapture(self.input_path)
@@ -467,6 +484,7 @@ class HandballProcessor:
 
 app = FastAPI()
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 @app.middleware("http")
 async def add_ngrok_header(request, call_next):
@@ -531,36 +549,49 @@ def reset_workspace():
     return {"message": "Workspace cleared"}
 
 @app.get("/clips")
-def list_clips():
-    all_clips = []
-    for root, dirs, files in os.walk(OUTPUT_DIR):
-        for f in files:
-            if f.endswith(".mp4"):
-                rel_path = rel_path_base = os.path.relpath(os.path.join(root, f), OUTPUT_DIR)
-                thumb_path = rel_path.replace('.mp4', '.jpg')
-                
-                all_clips.append({
-                    "filename": f,
-                    "path": rel_path.replace(os.sep, '/'),
-                    "url": f"download/{rel_path.replace(os.sep, '/')}?ngrok-skip-browser-warning=true",
-                    "thumbnailUrl": f"download/{thumb_path.replace(os.sep, '/')}?ngrok-skip-browser-warning=true"
-                })
-    # Sort clips by filename (which starts with action) or timestamp if we had it
-    return all_clips
+@app.get("/api/clips/{video_id}")
+def get_video_clips(video_id: str = "default"):
+    import json
+    clips_data = []
+    if os.path.exists(OUTPUT_DIR):
+        for f in os.listdir(OUTPUT_DIR):
+            if f.endswith(".json"):
+                try:
+                    with open(os.path.join(OUTPUT_DIR, f), "r") as mf:
+                        data = json.load(mf)
+                        clips_data.append(data)
+                except Exception as e:
+                    print(f"Error reading JSON {f}: {e}")
+    return clips_data
 
-@app.get("/download/{team}/{player}/{filename}")
-def download(team: str, player: str, filename: str):
-    path = os.path.join(OUTPUT_DIR, team, player, filename)
-    if not os.path.exists(path):
-        return JSONResponse({"error": "File not found"}, status_code=404)
+class MergeClipsRequest(BaseModel):
+    clips: list[str] # Lista de URLs o IDs de clips
+
+@app.post("/api/merge-clips")
+def merge_clips(req: MergeClipsRequest):
+    import uuid
+    import json
+    list_file = f"lista_{uuid.uuid4().hex[:6]}.txt"
+    merged_filename = f"output_merged_{uuid.uuid4().hex[:6]}.mp4"
+    merged_path = os.path.join(OUTPUT_DIR, merged_filename)
     
-    media_type = "video/mp4" if filename.endswith(".mp4") else "image/jpeg"
-    headers = {
-        "Content-Disposition": f"inline; filename={filename}",
-        "ngrok-skip-browser-warning": "true",
-        "Cache-Control": "public, max-age=3600"
-    }
-    return FileResponse(path, media_type=media_type, headers=headers)
+    with open(list_file, "w") as f:
+        for clip in req.clips:
+            clip_filename = clip
+            if clip.startswith("/static/clips/"):
+                clip_filename = clip.replace("/static/clips/", "")
+            elif not clip.endswith(".mp4"):
+                clip_filename = f"{clip}.mp4"
+                
+            abs_path = os.path.join(OUTPUT_DIR, clip_filename)
+            f.write(f"file '{abs_path}'\n")
+            
+    # Importante: para que ffmpeg pueda leer la ruta absoluta, la entrecomillamos simple.
+    subprocess.run(['ffmpeg', '-y', '-f', 'concat', '-safe', '0', '-i', list_file, '-c', 'copy', merged_path])
+    if os.path.exists(list_file):
+        os.remove(list_file)
+        
+    return {"url": f"/static/clips/{merged_filename}"}
 
 def run_pipeline(path):
     processor = HandballProcessor(path)
