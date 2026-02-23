@@ -10,11 +10,119 @@ interface HighlightClip {
     player?: string;
 }
 
+const SafeImage: React.FC<{ src: string; alt?: string; className?: string }> = ({ src, alt, className }) => {
+    const [blobUrl, setBlobUrl] = useState<string>('');
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        let mounted = true;
+        const loadImage = async () => {
+            if (!src) return;
+            if (!src.includes('ngrok-free.dev') && !src.includes('localhost') && src.startsWith('http') && !src.includes('127.0.0.1')) {
+                setBlobUrl(src);
+                setLoading(false);
+                return;
+            }
+
+            try {
+                const response = await fetch(src, {
+                    headers: { 'ngrok-skip-browser-warning': 'true' }
+                });
+                const blob = await response.blob();
+                if (mounted) {
+                    const url = URL.createObjectURL(blob);
+                    setBlobUrl(url);
+                    setLoading(false);
+                }
+            } catch (error) {
+                console.error("Error loading secure image:", error);
+            }
+        };
+
+        loadImage();
+        return () => {
+            mounted = false;
+            if (blobUrl && blobUrl.startsWith('blob:')) {
+                URL.revokeObjectURL(blobUrl);
+            }
+        };
+    }, [src]);
+
+    if (loading) return <div className={`bg-slate-900 animate-pulse ${className}`} />;
+
+    return <img src={blobUrl} alt={alt} className={className} />;
+};
+
+const SafeVideo: React.FC<{ src: string; poster?: string; onMouseOver?: (e: any) => void; onMouseOut?: (e: any) => void; className?: string }> = ({ src, poster, onMouseOver, onMouseOut, className }) => {
+    const [blobUrl, setBlobUrl] = useState<string>('');
+    const [posterBlobUrl, setPosterBlobUrl] = useState<string>('');
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        let mounted = true;
+
+        const fetchResource = async (url: string) => {
+            if (!url) return '';
+            if (!url.includes('ngrok-free.dev') && !url.includes('localhost') && url.startsWith('http') && !url.includes('127.0.0.1')) {
+                return url;
+            }
+            try {
+                const response = await fetch(url, {
+                    headers: { 'ngrok-skip-browser-warning': 'true' }
+                });
+                const blob = await response.blob();
+                return URL.createObjectURL(blob);
+            } catch (e) {
+                console.error("Error fetching resource:", e);
+                return '';
+            }
+        };
+
+        const loadMedia = async () => {
+            const [vUrl, pUrl] = await Promise.all([
+                fetchResource(src),
+                poster ? fetchResource(poster) : Promise.resolve('')
+            ]);
+
+            if (mounted) {
+                setBlobUrl(vUrl);
+                setPosterBlobUrl(pUrl);
+                setLoading(false);
+            }
+        };
+
+        loadMedia();
+        return () => {
+            mounted = false;
+            [blobUrl, posterBlobUrl].forEach(url => {
+                if (url && url.startsWith('blob:')) URL.revokeObjectURL(url);
+            });
+        };
+    }, [src, poster]);
+
+    if (loading) return <div className="w-full h-full bg-slate-900 animate-pulse flex items-center justify-center"><span className="material-symbols-outlined animate-spin text-white/20">progress_activity</span></div>;
+
+    return (
+        <video
+            src={blobUrl}
+            poster={posterBlobUrl}
+            muted
+            loop
+            playsInline
+            className={className}
+            onMouseOver={onMouseOver}
+            onMouseOut={onMouseOut}
+        />
+    );
+};
+
 export const ClipEditor: React.FC = () => {
     const [clips, setClips] = useState<HighlightClip[]>([]);
     const [selectedIds, setSelectedIds] = useState<string[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isGenerating, setIsGenerating] = useState(false);
+    const [isUploading, setIsUploading] = useState(false);
+    const [uploadFile, setUploadFile] = useState<File | null>(null);
     const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
 
     // Drag and Drop State
@@ -105,7 +213,6 @@ export const ClipEditor: React.FC = () => {
             const baseUrl = VideoProcessorService.API_BASE_URL;
             const base = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
 
-            // Enviamos las URLs completas al backend para el merging
             const urlsToMerge = selectedClipsObjects.map(c => c.url);
             const res = await fetch(`${base}/api/merge-clips`, {
                 method: 'POST',
@@ -127,6 +234,37 @@ export const ClipEditor: React.FC = () => {
             alert("Hubo un problema de conexión al generar el Highlight.");
         } finally {
             setIsGenerating(false);
+        }
+    };
+
+    const handleUpload = async () => {
+        if (!uploadFile) return;
+        setIsUploading(true);
+        try {
+            const baseUrl = VideoProcessorService.API_BASE_URL;
+            const base = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
+
+            const formData = new FormData();
+            formData.append('file', uploadFile);
+
+            const res = await fetch(`${base}/api/upload`, {
+                method: 'POST',
+                headers: { 'ngrok-skip-browser-warning': 'true' },
+                body: formData
+            });
+
+            if (res.ok) {
+                alert("Video subido. La IA comenzará el análisis.");
+                setUploadFile(null);
+                // Podríamos empezar a encuestar el estado aquí
+            } else {
+                alert("Error al subir el video.");
+            }
+        } catch (error) {
+            console.error("Upload error:", error);
+            alert("Error de conexión al subir el video.");
+        } finally {
+            setIsUploading(false);
         }
     };
 
@@ -162,7 +300,38 @@ export const ClipEditor: React.FC = () => {
                         <span className="material-symbols-outlined text-primary text-2xl">movie_filter</span>
                         Highlights Studio
                     </h2>
-                    <p className="text-white/50 text-xs mt-1">Crea tu carrete de mejores jugadas arrastrando y uniendo clips.</p>
+                    <div className="flex items-center gap-3 mt-1">
+                        <label className="flex items-center gap-2 bg-white/5 hover:bg-white/10 border border-white/10 px-3 py-1.5 rounded-lg cursor-pointer transition text-xs group">
+                            <span className="material-symbols-outlined text-sm text-primary group-hover:scale-110 transition">upload_file</span>
+                            <span className="text-white/70">{uploadFile ? uploadFile.name : 'Seleccionar Video (.mp4)'}</span>
+                            <input
+                                type="file"
+                                accept="video/mp4"
+                                className="hidden"
+                                onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
+                            />
+                        </label>
+                        {uploadFile && (
+                            <button
+                                onClick={handleUpload}
+                                disabled={isUploading}
+                                className="bg-primary hover:bg-primary/90 text-white text-[10px] font-black px-4 py-2 rounded-lg transition uppercase flex items-center gap-2 shadow-lg shadow-primary/20 disabled:opacity-50"
+                            >
+                                {isUploading ? (
+                                    <>
+                                        <span className="material-symbols-outlined animate-spin text-sm">autorenew</span>
+                                        Analizando con IA...
+                                    </>
+                                ) : (
+                                    <>
+                                        <span className="material-symbols-outlined text-sm">science</span>
+                                        Analizar Partido
+                                    </>
+                                )}
+                            </button>
+                        )}
+                        <p className="text-white/30 text-[10px] italic">Sube tu partido y deja que la IA haga el resto.</p>
+                    </div>
                 </div>
 
                 <div className="flex items-center gap-4">
@@ -234,12 +403,9 @@ export const ClipEditor: React.FC = () => {
                                     return (
                                         <div key={clip.id} className={`flex flex-col bg-slate-800 border-2 rounded-xl overflow-hidden group transition-all duration-300 ${isSelected ? 'border-primary shadow-[0_0_15px_rgba(255,87,34,0.3)]' : 'border-slate-700 hover:border-white/30 hover:-translate-y-1'}`}>
                                             <div className="relative aspect-video bg-black/80">
-                                                <video
+                                                <SafeVideo
                                                     src={getFullUrl(clip.url)}
                                                     poster={getFullUrl(clip.thumbnailUrl || '')}
-                                                    muted
-                                                    loop
-                                                    playsInline
                                                     className="w-full h-full object-cover"
                                                     onMouseOver={e => e.currentTarget.play()}
                                                     onMouseOut={e => { e.currentTarget.pause(); e.currentTarget.currentTime = 0; }}
@@ -324,7 +490,7 @@ export const ClipEditor: React.FC = () => {
                                         <span className="material-symbols-outlined text-sm">drag_indicator</span>
                                     </div>
                                     <div className="flex-shrink-0 w-16 aspect-video bg-black rounded overflow-hidden">
-                                        <img src={getFullUrl(clip.thumbnailUrl || '')} alt="thumb" className="w-full h-full object-cover opacity-80" />
+                                        <SafeImage src={getFullUrl(clip.thumbnailUrl || '')} alt="thumb" className="w-full h-full object-cover opacity-80" />
                                     </div>
                                     <div className="flex-1 flex flex-col justify-center min-w-0">
                                         <span className="text-[10px] text-primary font-bold uppercase truncate">{clip.action}</span>
