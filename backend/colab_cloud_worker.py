@@ -157,26 +157,26 @@ class TeamClassifier:
                     data.append(avg)
             except: continue
         
-        if len(data) < 10:
+        if len(data) < 20:
             print("⚠️ Muestras de color insuficientes tras filtrado de pista.")
             return
 
-        self.kmeans = KMeans(n_clusters=2, n_init=15)
+        # Usamos 3 clusters: HOME, AWAY y un posible 3ero (Portero, Árbitro o Fondo)
+        self.kmeans = KMeans(n_clusters=3, n_init=20)
         self.kmeans.fit(data)
         self.trained = True
         
-        c1, c2 = self.kmeans.cluster_centers_
-        name1 = self.get_color_name(c1)
-        name2 = self.get_color_name(c2)
+        centers = self.kmeans.cluster_centers_
+        names = [self.get_color_name(c) for c in centers]
         
-        if name1 == name2:
-            name1 += " (E1)"
-            name2 += " (E2)"
-
-        self.team_names = {0: name1, 1: name2}
-        print(f"\n\033[1;36m🎨 CALIBRACIÓN DE EQUIPOS (Filtro Pista Activado):\033[0m")
-        print(f"\033[1;32m   - HOME: {name1} (HSV: {c1.astype(int)})\033[0m")
-        print(f"\033[1;34m   - AWAY: {name2} (HSV: {c2.astype(int)})\033[0m\n")
+        # Intentar identificar HOME (Rojo/Azul) y AWAY (contraste)
+        # Por ahora, simplemente guardamos los 3 y en el predict decidiremos
+        self.team_names = {i: names[i] for i in range(3)}
+        
+        print(f"\n\033[1;36m🎨 CALIBRACIÓN DE EQUIPOS (3 Clústeres):\033[0m")
+        for i in range(3):
+            print(f"\033[1;3{i+2}m   - Grupo {i}: {names[i]} (HSV: {centers[i].astype(int)})\033[0m")
+        print("")
 
     def predict(self, crop):
         if not self.trained: return "UNKNOWN"
@@ -190,7 +190,11 @@ class TeamClassifier:
             avg = cv2.mean(hsv, mask=inverse_mask)[:3]
             
             label = self.kmeans.predict([avg])[0]
-            return "HOME" if label == 0 else "AWAY"
+            # Mapeo a HOME/AWAY: El grupo 0 y 1 suelen ser los equipos principales. 
+            # El grupo 2 suele ser el portero o árbitro.
+            if label == 0: return "HOME"
+            if label == 1: return "AWAY"
+            return "UNKNOWN" # Evitar que el portero/fondo sume como equipo si es clúster 2
         except: return "UNKNOWN"
 
 class HandballProcessor:
@@ -272,6 +276,15 @@ class HandballProcessor:
         
         if os.path.exists(temp_file):
             os.rename(temp_file, final_file)
+            
+            # Generar Thumbnail (vía FFmpeg) - Primer segundo para que no sea negro
+            thumb_filename = final_filename.replace('.mp4', '.jpg')
+            thumb_file = os.path.join(folder, thumb_filename)
+            subprocess.run([
+                'ffmpeg', '-y', '-i', final_file, 
+                '-ss', '00:00:01', '-vframes', '1', 
+                '-q:v', '2', '-loglevel', 'error', thumb_file
+            ])
 
         color_info = ""
         if team == "HOME" and hasattr(self.team_clf, 'team_names'):
@@ -311,7 +324,7 @@ class HandballProcessor:
                             crop = frame[max(0,y1):min(y2,h_orig), max(0,x1):min(x2,w)]
                             if crop.size > 0: self.training_crops.append(crop)
                 
-                if len(self.training_crops) >= 40:
+                if len(self.training_crops) >= 60:
                     self.team_clf.train(self.training_crops)
                     break
             cal_frame += 1
@@ -411,7 +424,13 @@ class HandballProcessor:
                     self.attack_cooldown += STRIDE
                     if self.attack_cooldown > COOLDOWN_FRAMES:
                         winner_player = f"P-{self.possession_votes.most_common(1)[0][0]}" if self.possession_votes else "Desconocido"
-                        winner_team = self.current_team_votes.most_common(1)[0][0] if self.current_team_votes else "Sin_Equipo"
+                        
+                        # Fallback de equipo: si no hay votos en este ataque, usar el que más haya aparecido en toda la sesión
+                        if self.current_team_votes:
+                            winner_team = self.current_team_votes.most_common(1)[0][0]
+                        else:
+                            # Si no sabemos, al menos ponemos el nombre de color de HOME por defecto si existe
+                            winner_team = "HOME" if self.team_clf.trained else "Sin_Equipo"
 
                         self.export_segment_async(
                             self.attack_start_time, 
@@ -504,18 +523,26 @@ def list_clips():
     for root, dirs, files in os.walk(OUTPUT_DIR):
         for f in files:
             if f.endswith(".mp4"):
-                rel_path = os.path.relpath(os.path.join(root, f), OUTPUT_DIR)
+                rel_path = rel_path_base = os.path.relpath(os.path.join(root, f), OUTPUT_DIR)
+                thumb_path = rel_path.replace('.mp4', '.jpg')
+                
                 all_clips.append({
                     "filename": f,
                     "path": rel_path.replace(os.sep, '/'),
-                    "url": f"/download/{rel_path.replace(os.sep, '/')}?ngrok-skip-browser-warning=true"
+                    "url": f"/download/{rel_path.replace(os.sep, '/')}?ngrok-skip-browser-warning=true",
+                    "thumbnailUrl": f"/download/{thumb_path.replace(os.sep, '/')}?ngrok-skip-browser-warning=true"
                 })
+    # Sort clips by filename (which starts with action) or timestamp if we had it
     return all_clips
 
 @app.get("/download/{team}/{player}/{filename}")
 def download(team: str, player: str, filename: str):
     path = os.path.join(OUTPUT_DIR, team, player, filename)
-    return FileResponse(path)
+    if not os.path.exists(path):
+        return JSONResponse({"error": "File not found"}, status_code=404)
+    
+    media_type = "video/mp4" if filename.endswith(".mp4") else "image/jpeg"
+    return FileResponse(path, media_type=media_type)
 
 def run_pipeline(path):
     processor = HandballProcessor(path)

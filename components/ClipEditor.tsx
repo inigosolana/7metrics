@@ -354,6 +354,7 @@ export const ClipEditor: React.FC = () => {
 
                                                 <video
                                                     src={clip.url}
+                                                    poster={clip.thumbnailUrl}
                                                     className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity"
                                                     muted
                                                     playsInline
@@ -414,7 +415,7 @@ export const ClipEditor: React.FC = () => {
                                 <div className="p-6 overflow-y-auto space-y-6">
                                     <div className="aspect-video rounded-lg overflow-hidden border border-white/10 bg-black">
                                         <div className="aspect-video rounded-lg overflow-hidden border border-white/10 bg-black">
-                                            <video src={selectedClip.url} className="w-full h-full object-contain" controls autoPlay loop />
+                                            <video src={selectedClip.url} poster={selectedClip.thumbnailUrl} className="w-full h-full object-contain" controls autoPlay loop />
                                         </div>
                                     </div>
                                     <div className="space-y-1">

@@ -176,7 +176,7 @@ export class VideoProcessorService {
             team: (team === 'HOME' || team === 'AWAY') ? team : 'AWAY',
             player: player.replace('_', ' '),
             actionType: action as any,
-            thumbnailUrl: '', // Eliminamos la foto aleatoria de perro/paisaje
+            thumbnailUrl: backendClip.thumbnailUrl ? (backendClip.thumbnailUrl.startsWith('http') ? backendClip.thumbnailUrl : `${this.API_BASE_URL}${backendClip.thumbnailUrl}`) : '',
             url: backendClip.url.startsWith('http') ? backendClip.url : `${this.API_BASE_URL}${backendClip.url}`
         };
     }
