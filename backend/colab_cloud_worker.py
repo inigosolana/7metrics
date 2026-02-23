@@ -123,7 +123,7 @@ class TeamClassifier:
         self.trained = False
 
     def train(self, crops):
-        if len(crops) < 50: return
+        if len(crops) < 30: return
         data = []
         for crop in crops:
             try:
@@ -138,7 +138,7 @@ class TeamClassifier:
             self.kmeans = KMeans(n_clusters=2, n_init=10)
             self.kmeans.fit(data)
             self.trained = True
-            print("🎨 Equipos identificados automáticamente.")
+            print("\033[1;36m🎨 Equipos identificados automáticamente (Calibración completa).\033[0m")
 
     def predict(self, crop):
         if not self.trained: return "UNKNOWN"
@@ -293,31 +293,46 @@ class HandballProcessor:
                                 crop = frame[max(0,y1):min(y2,h_orig), max(0,x1):min(x2,w)]
                                 if crop.size > 0: self.training_crops.append(crop)
 
-                if len(self.training_crops) >= 50 and not self.team_clf.trained:
+                if len(self.training_crops) >= 30 and not self.team_clf.trained:
                     self.team_clf.train(self.training_crops)
 
             if ball_pos:
-                bx, _ = ball_pos
+                bx, by = ball_pos
                 in_danger_zone = (bx < zona_izq) or (bx > zona_der)
                 
                 closest_p = None
-                min_d = 250 # Aumentado a 250px para capturar mejor la posesión
+                # Umbral dinámico basado en resolución (ej: 20% del ancho del video)
+                min_d = w * 0.20 
+                
                 for p in players:
                     px = (p['box'][0] + p['box'][2]) / 2
                     py = (p['box'][1] + p['box'][3]) / 2
-                    d = np.sqrt((px-bx)**2 + (py-ball_pos[1])**2)
-                    if d < min_d:
-                        min_d = d
-                        closest_p = p
+                    pb = p['box']
+                    
+                    # Distancia Euclidiana
+                    d = np.sqrt((px-bx)**2 + (py-by)**2)
+                    
+                    # Fallback: ¿Está el balón dentro del área del jugador? (con margen)
+                    is_inside = (pb[0]-20 < bx < pb[2]+20) and (pb[1]-20 < by < pb[3]+20)
+                    
+                    if d < min_d or is_inside:
+                        if is_inside: d = d / 2 # Dar prioridad si está físicamente "dentro"
+                        if d < min_d:
+                            min_d = d
+                            closest_p = p
                 
                 if closest_p:
                     self.possession_votes[closest_p['id']] += 1
                     if self.team_clf.trained:
                         pb = closest_p['box']
-                        crop = frame[pb[1]:pb[3], pb[0]:pb[2]]
+                        crop = frame[max(0,pb[1]):min(pb[3],h_orig), max(0,pb[0]):min(pb[2],w)]
                         if crop.size > 0:
                             tm = self.team_clf.predict(crop)
                             self.current_team_votes[tm] += 1
+                        else:
+                            print(f"\033[0;33m⚠️ No se pudo extraer crop del jugador para clasificación de equipo.\033[0m")
+                else:
+                    print(f"\033[0;33m⚠️ No se encontró jugador cercano al balón para determinar posesión.\033[0m")
 
                 if in_danger_zone:
                     self.attack_cooldown = 0 # Reset cooldown si sigue habiendo peligro
