@@ -65,42 +65,10 @@ ORIGINAL_MODEL = "best.pt"
 ENGINE_MODEL = "best.engine"
 
 def load_optimized_model():
-    """Carga TensorRT si existe y funciona, o convierte el .pt si hay GPU"""
-    
-    # 1. Intentar cargar motor existente con validación
-    if os.path.exists(ENGINE_MODEL):
-        print(f"⚡ Cargando motor acelerado: {ENGINE_MODEL}")
-        try:
-            model = YOLO(ENGINE_MODEL)
-            # Prueba rápida de inferencia para validar versión (evita crash posterior)
-            dummy = np.zeros((640, 640, 3), dtype=np.uint8)
-            model.predict(dummy, verbose=False)
-            print("✅ Motor validado correctamente.")
-            return model
-        except Exception as e:
-            print(f"⚠️ MOTOR CORRUPTO O VERSIÓN INCORRECTA ({e}). ELIMINANDO PARA REGENERAR...")
-            try:
-                os.remove(ENGINE_MODEL)
-            except:
-                pass
-            # Continuamos abajo para regenerarlo...
-
-    # 2. Si no hay motor o falló, cargar .pt y optimizar
+    """Carga el modelo best.pt directamente para evitar tiempos de exportación de TensorRT"""
     if os.path.exists(ORIGINAL_MODEL):
-        print(f"⚠️ Usando modelo estándar {ORIGINAL_MODEL}")
-        if torch.cuda.is_available():
-            print("🚀 GPU Detectada: Optimizando modelo (esto tarda ~2 min la primera vez)...")
-            try:
-                model = YOLO(ORIGINAL_MODEL)
-                # Exportar a TensorRT (fp16 para mayor velocidad en T4)
-                model.export(format="engine", half=True, imgsz=640, device=0)
-                print("✅ Conversión completada. Cargando nuevo motor...")
-                return YOLO(ENGINE_MODEL)
-            except Exception as e:
-                print(f"❌ Falló la optimización ({e}). Usando modelo estándar lento.")
-                return YOLO(ORIGINAL_MODEL)
-        else:
-            return YOLO(ORIGINAL_MODEL)
+        print(f"🚀 Cargando modelo: {ORIGINAL_MODEL}")
+        return YOLO(ORIGINAL_MODEL)
     
     print("⚠️ No se encontró best.pt. Descargando YOLOv8n base...")
     return YOLO("yolov8n.pt")
@@ -108,7 +76,7 @@ def load_optimized_model():
 # --- CONFIGURACIÓN ---
 NGROK_AUTH_TOKEN = "38nuec0NauciUj1o70wg29N1xK2_5odXuyQSStGE6tLhuLXdq" # Tu token
 PORT = 8000
-TASKS = {} # Estado global por tareas: {task_id: {"status": "...", "progress": 0, "eta_seconds": 0, "clips": []}}
+TASKS = {} # Estado global por tareas: {task_id: {"status": "...", "progress": 0, "eta_seconds": 0, "team_colors": [], "clips": []}}
 GLOBAL_STATE = {"progress": 0, "status": "idle", "current_file": "", "eta_seconds": 0} # Deprecated soon
 
 BASE_DIR = os.getcwd()
@@ -320,12 +288,10 @@ class HandballProcessor:
                 "player": player,
                 "thumbnailUrl": f"/static/clips/{thumb_filename}"
             }
-            with open(os.path.join(OUTPUT_DIR, f"{clip_id}.json"), "w") as f:
-                json.dump(metadata, f)
-            
-            # Si hay una tarea asociada, añadimos el clip a su lista
+            # Si hay una tarea asociada, añadimos el clip a su lista 'al vuelo'
             if self.task_id and self.task_id in TASKS:
-                TASKS[self.task_id]["clips"].append(metadata)
+                if metadata not in TASKS[self.task_id]["clips"]:
+                    TASKS[self.task_id]["clips"].append(metadata)
             
             file_size = os.path.getsize(final_file) / (1024*1024)
             print(f"🎬 Clip Listo: {clip_id} ({file_size:.1f}MB) | {team_label} | {predicted_action.upper()}")
@@ -364,6 +330,9 @@ class HandballProcessor:
                 
                 if len(self.training_crops) >= 60:
                     self.team_clf.train(self.training_crops)
+                    if self.task_id and self.task_id in TASKS:
+                        detected_colors = [v for k, v in self.team_clf.team_names.items()] if hasattr(self.team_clf, 'team_names') else []
+                        TASKS[self.task_id]["team_colors"] = detected_colors
                     break
             cal_frame += 1
 
@@ -622,9 +591,10 @@ async def upload_video_direct(background_tasks: BackgroundTasks, file: UploadFil
     
     # Inicializar estado de la tarea
     TASKS[task_id] = {
-        "status": "processing",
+        "status": "upload_success",
         "progress": 0,
         "eta_seconds": 0,
+        "team_colors": [],
         "clips": [],
         "filename": file.filename
     }
