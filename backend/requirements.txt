@@ -1,9 +1,10 @@
 fastapi
 uvicorn
 python-multipart
-ffmpeg-python
-opencv-python
-numpy
-librosa
 kaggle
 python-dotenv
+ultralytics
+opencv-python-headless
+scikit-learn
+nest_asyncio
+numpy

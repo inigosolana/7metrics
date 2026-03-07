@@ -7,7 +7,7 @@
     - Nuevos filtros y colores para las acciones detectadas.
     - Reproductor de vídeo integrado en el panel lateral.
     - Previsualización automática al pasar el ratón.
-4.  **Backend Robusto:** Se solucionó el bloqueo de puertos en Colab y el error de bucle de eventos (`asyncio`) usando hilos separados.
+4.  **Backend Robusto:** Se separó API FastAPI y motor IA para ejecución limpia en Kaggle/Docker.
 
 ---
 
@@ -20,18 +20,13 @@ npm run dev
 ```
 Accede a: `http://localhost:3000`
 
-### 2. Preparar Colab (La Nube)
-1.  Abre tu notebook de Google Colab.
-2.  **IMPORTANTE:** Asegúrate de subir los archivos clave a la raíz de Colab:
-    - 📄 `LRCN_model.h5` (Modelo de acciones)
-    - 📄 `best.pt` (Modelo de detección de jugadores/balón)
-3.  Copia y pega el contenido ACTUALIZADO de `backend/colab_cloud_worker.py`.
-4.  Dale al **Play ▶️**.
-
-### 3. Conectar
-1.  Copia la **URL PÚBLICA** que salga en Colab (ej: `https://xxxx.ngrok-free.dev`).
-2.  Pégala en la caja de texto arriba a la derecha en tu web (`http://localhost:3000`).
-3.  ¡Listo para procesar partidos! 🤾‍♂️
+### 2. Preparar Backend (Kaggle + FastAPI)
+1.  Configura `backend/.env` con:
+    - `KAGGLE_USERNAME`
+    - `KAGGLE_KEY`
+    - `WEBHOOK_BASE_URL`
+2.  Ejecuta el backend (`uvicorn main:app --reload --port 8000`) o levanta el stack Docker.
+3.  Desde el frontend, usa el flujo GPU que llama a `/api/process-gpu`.
 
 ---
 *Descansa, ¡el sistema ha quedado niquelado!* 😴✨

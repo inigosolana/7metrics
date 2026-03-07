@@ -28,9 +28,8 @@ export interface GpuProcessingResult {
 }
 
 export class VideoProcessorService {
-    // Configurado automáticamente por Antigravity con el túnel de Colab activo
-    // URL del Colab (configurable en .env.local). Fallback a localhost si no está definido.
-    static API_BASE_URL = import.meta.env.VITE_COLAB_URL || 'http://localhost:8000';
+    // URL pública/base del backend FastAPI (Kaggle workflow backend).
+    static API_BASE_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
 
     /**
      * Procesamiento en GPU vía Kaggle: sube el vídeo, lanza el kernel y hace polling hasta completar.

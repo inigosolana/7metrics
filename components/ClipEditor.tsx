@@ -498,7 +498,7 @@ export const ClipEditor: React.FC = () => {
                                     </div>
                                 </div>
                                 <div className="mt-4 flex items-center justify-between text-[10px] text-white/30 font-bold uppercase tracking-widest border-t border-white/5 pt-3">
-                                    <span>Servidor: Google Colab T4 Cloud</span>
+                                    <span>Servidor: Kaggle GPU Worker</span>
                                     <span>Acción: {processStatus?.toUpperCase() || 'BUSCANDO JUGADAS...'}</span>
                                 </div>
                             </div>
