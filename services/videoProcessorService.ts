@@ -28,8 +28,8 @@ export interface GpuProcessingResult {
 }
 
 export class VideoProcessorService {
-    // URL pública/base del backend FastAPI (Kaggle workflow backend).
-    static API_BASE_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
+    // URL del backend. Vacío = mismo origen (Docker con nginx proxy). Local: VITE_BACKEND_URL=http://localhost:8000
+    static API_BASE_URL = import.meta.env.VITE_BACKEND_URL ?? '';
 
     /**
      * Procesamiento en GPU vía Kaggle: sube el vídeo, lanza el kernel y hace polling hasta completar.
