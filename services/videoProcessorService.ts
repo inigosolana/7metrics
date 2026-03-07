@@ -19,10 +19,105 @@ const DEFAULT_OPTIONS: ProcessingOptions = {
     leadOutSeconds: 3,
     targetActions: ['GOAL', 'POST', 'MISS', 'TURNOVER', 'STEAL', 'STEPS', 'DOUBLE_DRIBBLE', 'FOUL']
 };
+
+/** Resultado del procesamiento GPU (Kaggle). Incluye métricas y clips si el worker los envía. */
+export interface GpuProcessingResult {
+    clips: VideoClip[];
+    metrics: { clips_count?: number; status?: string; message?: string; [key: string]: unknown };
+    jobId: string;
+}
+
 export class VideoProcessorService {
     // Configurado automáticamente por Antigravity con el túnel de Colab activo
     // URL del Colab (configurable en .env.local). Fallback a localhost si no está definido.
     static API_BASE_URL = import.meta.env.VITE_COLAB_URL || 'http://localhost:8000';
+
+    /**
+     * Procesamiento en GPU vía Kaggle: sube el vídeo, lanza el kernel y hace polling hasta completar.
+     * Usa POST /api/upload-for-gpu, POST /api/process-gpu y GET /api/job/{job_id}.
+     */
+    static async processFullMatchWithGpu(
+        videoFile: File,
+        options: Partial<ProcessingOptions> = {},
+        onProgress?: (progress: number, message?: string) => void,
+        onClipsUpdate?: (clips: VideoClip[]) => void
+    ): Promise<GpuProcessingResult> {
+        const config = { ...DEFAULT_OPTIONS, ...options };
+        const base = this.API_BASE_URL.replace(/\/$/, '');
+        const headers: Record<string, string> = { 'ngrok-skip-browser-warning': 'true' };
+
+        try {
+            if (onProgress) onProgress(5, 'Subiendo vídeo para GPU...');
+            const form = new FormData();
+            form.append('file', videoFile);
+            const uploadRes = await fetch(`${base}/api/upload-for-gpu`, {
+                method: 'POST',
+                headers,
+                body: form,
+            });
+            if (!uploadRes.ok) {
+                const err = await uploadRes.json().catch(() => ({ detail: uploadRes.statusText }));
+                throw new Error((err as { detail?: string }).detail || 'Error al subir el vídeo');
+            }
+            const { video_url } = (await uploadRes.json()) as { video_url: string };
+            if (onProgress) onProgress(15, 'Encolando trabajo en Kaggle GPU...');
+
+            const processRes = await fetch(`${base}/api/process-gpu`, {
+                method: 'POST',
+                headers: { ...headers, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ video_url }),
+            });
+            if (!processRes.ok) {
+                const err = await processRes.json().catch(() => ({}));
+                throw new Error((err as { detail?: string }).detail || 'Error al lanzar procesamiento GPU');
+            }
+            const { job_id } = (await processRes.json()) as { job_id: string };
+            if (onProgress) onProgress(20, 'Trabajo enviado. Esperando Kaggle...');
+
+            const maxAttempts = 400;
+            for (let i = 0; i < maxAttempts; i++) {
+                await new Promise(r => setTimeout(r, 3000));
+                const jobRes = await fetch(`${base}/api/job/${job_id}`, { headers });
+                if (!jobRes.ok) continue;
+                const job = (await jobRes.json()) as {
+                    status: string;
+                    error?: string;
+                    metrics?: { clips_count?: number; clips?: Array<{ path: string; filename: string }> };
+                };
+                const pct = 20 + (i / maxAttempts) * 75;
+                if (onProgress) {
+                    onProgress(Math.min(pct, 95), job.status === 'pending' ? 'Procesando en Kaggle GPU...' : job.status);
+                }
+                if (job.status === 'error') {
+                    throw new Error(job.error || 'Error en el trabajo Kaggle');
+                }
+                if (job.status === 'completed' && job.metrics) {
+                    if (onProgress) onProgress(100, 'Completado');
+                    const clips: VideoClip[] = (job.metrics.clips || []).map((c: { path: string; filename: string }, idx: number) => ({
+                        id: c.path || `gpu-clip-${idx}`,
+                        startTime: '00:00:00',
+                        endTime: '00:00:10',
+                        duration: '10s',
+                        team: 'AWAY',
+                        player: 'GPU',
+                        actionType: 'GOAL',
+                        thumbnailUrl: '',
+                        url: `${base}/static/${c.path}`,
+                    }));
+                    if (onClipsUpdate && clips.length) onClipsUpdate(clips);
+                    return {
+                        clips,
+                        metrics: job.metrics,
+                        jobId: job_id,
+                    };
+                }
+            }
+            throw new Error('Tiempo de espera agotado esperando a Kaggle');
+        } catch (e) {
+            console.warn('processFullMatchWithGpu error:', e);
+            throw e;
+        }
+    }
 
     static async processFullMatch(
         videoFile: File,

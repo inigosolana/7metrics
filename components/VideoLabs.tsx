@@ -5,6 +5,7 @@ export const VideoLabs: React.FC<{ onProcessComplete: () => void }> = ({ onProce
     const [uploadState, setUploadState] = useState<'IDLE' | 'UPLOADING' | 'PROCESSING' | 'COMPLETED'>('IDLE');
     const [progress, setProgress] = useState(0);
     const [statusMsg, setStatusMsg] = useState('');
+    const [useGpu, setUseGpu] = useState(true); // GPU (Kaggle) por defecto
 
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -14,24 +15,32 @@ export const VideoLabs: React.FC<{ onProcessComplete: () => void }> = ({ onProce
             setStatusMsg('Iniciando carga...');
 
             try {
-                // Call the actual service
-                const clips = await VideoProcessorService.processFullMatch(
-                    file,
-                    {},
-                    (p, msg) => {
-                        setProgress(p);
-                        if (msg) setStatusMsg(msg);
-                        if (p >= 40) setUploadState('PROCESSING');
-                    }
-                );
-
-                console.log("Processed clips:", clips);
+                if (useGpu) {
+                    const result = await VideoProcessorService.processFullMatchWithGpu(
+                        file,
+                        {},
+                        (p, msg) => {
+                            setProgress(p);
+                            if (msg) setStatusMsg(msg);
+                            if (p >= 40) setUploadState('PROCESSING');
+                        }
+                    );
+                    console.log("GPU processed:", result.clips.length, "clips", result.metrics);
+                } else {
+                    await VideoProcessorService.processFullMatch(
+                        file,
+                        {},
+                        (p, msg) => {
+                            setProgress(p);
+                            if (msg) setStatusMsg(msg);
+                            if (p >= 40) setUploadState('PROCESSING');
+                        }
+                    );
+                }
                 setUploadState('COMPLETED');
                 onProcessComplete();
             } catch (error) {
                 console.error("Processing failed:", error);
-                // Even if it fails, we show completed for the demo if that's what's expected, 
-                // but better to alert or fallback.
                 setUploadState('COMPLETED');
                 onProcessComplete();
             }
@@ -59,7 +68,11 @@ export const VideoLabs: React.FC<{ onProcessComplete: () => void }> = ({ onProce
                                 <span className="material-symbols-outlined text-6xl text-primary">cloud_upload</span>
                             </div>
                             <h3 className="text-xl font-bold text-white mb-2">Drag & Drop Match Video</h3>
-                            <p className="text-white/40 text-sm mb-6 max-w-xs">Supports MP4, MOV. Max file size 5GB. AI analysis takes approx 3-5 mins.</p>
+                            <p className="text-white/40 text-sm mb-4 max-w-xs">Supports MP4, MOV. Max file size 5GB. AI analysis takes approx 3-5 mins.</p>
+                            <label className="flex items-center gap-2 text-white/80 text-sm mb-4 cursor-pointer">
+                                <input type="checkbox" checked={useGpu} onChange={(e) => setUseGpu(e.target.checked)} className="rounded" />
+                                Usar GPU (Kaggle)
+                            </label>
                             <label className="cursor-pointer bg-primary hover:bg-primary/80 text-white font-bold py-3 px-8 rounded-xl transition-all shadow-lg shadow-primary/20">
                                 Select File
                                 <input type="file" className="hidden" accept="video/*" onChange={handleFileUpload} />

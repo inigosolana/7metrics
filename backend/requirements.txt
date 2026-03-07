@@ -5,3 +5,5 @@ ffmpeg-python
 opencv-python
 numpy
 librosa
+kaggle
+python-dotenv
